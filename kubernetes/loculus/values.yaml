@@ -1,5 +1,4 @@
 environment: server
-imagePullPolicy: Always
 
 # Pod scheduling: nodeSelector, tolerations, affinity, and priority class for pod placement
 podScheduling:
@@ -2614,6 +2613,36 @@ bannerMessage: "This is a demonstration environment. It may contain non-accurate
 welcomeMessageHTML: null
 additionalHeadHTML: ""
 images:
+  pullPolicy: Always
+  registry: ""
+  pullSecrets: []
+  pullSecretOverrides:
+    website: []
+    backend: []
+    keycloak: []
+    lapis: []
+    loculusSilo: []
+    enaSubmission: []
+    preprocessing: []
+    ingest: []
+    taxonomy: []
+    minio: []
+    autoapprove: []
+    docs: []
+  configProcessor:
+    repository: "ghcr.io/loculus-project/config-processor"
+  autoapprove:
+    repository: "ghcr.io/loculus-project/ingest"
+  docs:
+    repository: "ghcr.io/loculus-project/docs"
+  enaSubmission:
+    repository: "ghcr.io/loculus-project/ena-submission"
+  enaSubmissionFlyway:
+    repository: "ghcr.io/loculus-project/ena-submission-flyway"
+  keycloakify:
+    repository: "ghcr.io/loculus-project/keycloakify"
+  taxonomyService:
+    repository: "ghcr.io/loculus-project/taxonomy-service"
   loculusSilo:
     repository: "ghcr.io/loculus-project/loculus-silo"
     pullPolicy: Always
@@ -2627,6 +2656,24 @@ images:
   backend:
     repository: "ghcr.io/loculus-project/backend"
     pullPolicy: Always
+  postgres:
+    repository: "postgres"
+    tag: "15.12"
+  minio:
+    repository: "minio/minio"
+    tag: "latest"
+  keycloak:
+    repository: "quay.io/keycloak/keycloak"
+    tag: "23.0"
+  busybox:
+    repository: "busybox"
+    tag: "latest"
+  kubectl:
+    repository: "alpine/kubectl"
+    tag: "1.36.0"
+  alpine:
+    repository: "alpine"
+    tag: "3"
 silo:
   apiThreadsForHttpConnections: 16
 secrets:

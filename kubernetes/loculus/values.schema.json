@@ -1049,6 +1049,11 @@
           "type": "string",
           "description": "The repository to pull the image from. Example: ghcr.io/loculus-project/website"
         },
+        "registry": {
+          "groups": ["image"],
+          "type": "string",
+          "description": "Optional registry prefix override for this image. Set to an empty string to disable the global images.registry prefix for this image."
+        },
         "tag": {
           "groups": ["image"],
           "type": "string",
@@ -1061,7 +1066,18 @@
           "description": "The pull policy to use. Always: always pull the image. IfNotPresent: pull if not present locally. Never: never pull, use local image only."
         }
       },
-      "required": ["repository", "pullPolicy"],
+      "required": ["repository"],
+      "additionalProperties": false
+    },
+    "imagePullSecret": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the Kubernetes secret containing docker registry credentials."
+        }
+      },
+      "required": ["name"],
       "additionalProperties": false
     }
   },
@@ -1136,13 +1152,6 @@
       "enum": ["local", "server"],
       "default": "server",
       "description": "Deployment environment. local for development, server for production"
-    },
-    "imagePullPolicy": {
-      "groups": ["general"],
-      "type": "string",
-      "enum": ["Always", "IfNotPresent", "Never"],
-      "default": "Always",
-      "description": "Global image pull policy applied to all deployments. Can be overridden per-image in the images section for some images. Always: always pull the image. IfNotPresent: pull if not present locally. Never: never pull, use local image only."
     },
     "podScheduling": {
       "groups": ["general"],
@@ -1888,13 +1897,116 @@
     "images": {
       "groups": ["general"],
       "type": "object",
-      "description": "Which docker images to use. You can specify an [image spec (type)](#image-spec-type) for `lapis`, `lapisSilo`, `loculusSilo`, `website` and `backend.`",
+      "description": "Image settings, including global pull policy, optional registry prefix, optional pull secrets, and per-image overrides.",
       "properties": {
+        "pullPolicy": {
+          "groups": ["image"],
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"],
+          "default": "Always",
+          "description": "Global image pull policy used by all containers unless overridden on a specific image entry."
+        },
+        "registry": {
+          "groups": ["image"],
+          "type": "string",
+          "default": "",
+          "description": "Global registry prefix prepended to all image repositories when set."
+        },
+        "pullSecrets": {
+          "groups": ["image"],
+          "type": "array",
+          "default": [],
+          "description": "Global image pull secrets applied to all workloads unless overridden by a specific workload under images.pullSecretOverrides.",
+          "items": {
+            "$ref": "#/definitions/imagePullSecret"
+          }
+        },
+        "pullSecretOverrides": {
+          "groups": ["image"],
+          "type": "object",
+          "description": "Per-workload image pull secrets overrides. If a workload has non-empty overrides, they replace the global images.pullSecrets. Useful for applying different secrets to different services (e.g., website may need a sealed secret while others use default credentials).",
+          "properties": {
+            "website": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "backend": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "keycloak": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "lapis": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "loculusSilo": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "enaSubmission": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "preprocessing": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "ingest": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "taxonomy": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "minio": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "autoapprove": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            },
+            "docs": {
+              "type": "array",
+              "default": [],
+              "items": { "$ref": "#/definitions/imagePullSecret" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "configProcessor": { "$ref": "#/definitions/imageSpec" },
+        "autoapprove": { "$ref": "#/definitions/imageSpec" },
+        "docs": { "$ref": "#/definitions/imageSpec" },
+        "enaSubmission": { "$ref": "#/definitions/imageSpec" },
+        "enaSubmissionFlyway": { "$ref": "#/definitions/imageSpec" },
+        "keycloakify": { "$ref": "#/definitions/imageSpec" },
+        "taxonomyService": { "$ref": "#/definitions/imageSpec" },
         "lapis": { "$ref": "#/definitions/imageSpec" },
         "lapisSilo": { "$ref": "#/definitions/imageSpec" },
         "loculusSilo": { "$ref": "#/definitions/imageSpec" },
         "website": { "$ref": "#/definitions/imageSpec" },
-        "backend": { "$ref": "#/definitions/imageSpec" }
+        "backend": { "$ref": "#/definitions/imageSpec" },
+        "postgres": { "$ref": "#/definitions/imageSpec" },
+        "minio": { "$ref": "#/definitions/imageSpec" },
+        "keycloak": { "$ref": "#/definitions/imageSpec" },
+        "busybox": { "$ref": "#/definitions/imageSpec" },
+        "kubectl": { "$ref": "#/definitions/imageSpec" },
+        "alpine": { "$ref": "#/definitions/imageSpec" }
       },
       "additionalProperties": false
     },
