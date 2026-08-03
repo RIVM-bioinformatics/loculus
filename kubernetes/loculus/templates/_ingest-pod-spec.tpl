@@ -26,11 +26,13 @@ metadata:
 spec:
   {{- include "possiblePriorityClassName" . | nindent 2 }}
   {{- include "loculus.podScheduling" . | nindent 2 }}
+  {{- include "loculus.imagePullSecrets" (list . "ingest") | nindent 2 }}
   serviceAccountName: loculus-ingest-lock
   restartPolicy: Never
   initContainers:
     - name: version-check
-      image: busybox
+      image: {{ include "loculus.image" (list . .Values.images.busybox (.Values.images.busybox.tag | default "latest")) }}
+      imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.busybox) }}
       {{- include "loculus.resources" (list "ingest-init" $Values) | nindent 6 }}
       command: ['sh', '-c', '
         CONFIG_VERSION=$(grep "verify_loculus_version_is:" /package/config/config.yaml | sed "s/verify_loculus_version_is: //;");
@@ -49,7 +51,8 @@ spec:
           mountPath: /package/config/config.yaml
           subPath: config.yaml
     - name: wait-for-no-other-ingest
-      image: alpine/kubectl:1.36.0
+      image: {{ include "loculus.image" (list . .Values.images.kubectl (.Values.images.kubectl.tag | default "latest")) }}
+      imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.kubectl) }}
       command:
         - sh
         - -c
@@ -77,8 +80,8 @@ spec:
           done
   containers:
     - name: ingest-{{ $key }}
-      image: {{ $organismContent.ingest.image }}:{{ $dockerTag }}
-      imagePullPolicy: {{ $Values.imagePullPolicy }}
+      image: {{ include "loculus.imageFromRepository" (list . $organismContent.ingest.image $dockerTag) }}
+      imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . (dict)) }}
       {{- include "loculus.resources" (list "ingest" $Values) | nindent 6 }}
       env:
         - name: KEYCLOAK_INGEST_PASSWORD

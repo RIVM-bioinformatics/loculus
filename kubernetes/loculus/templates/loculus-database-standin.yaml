@@ -25,9 +25,11 @@ spec:
         component: database
     spec:
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      {{- include "loculus.imagePullSecrets" (list . "backend") | nindent 6 }}
       containers:
       - name: database
-        image: postgres:15.12
+        image: {{ include "loculus.image" (list . .Values.images.postgres (.Values.images.postgres.tag | default "latest")) }}
+        imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.postgres) }}
         args:
           - "-c"
           - "shared_preload_libraries=pg_stat_statements"

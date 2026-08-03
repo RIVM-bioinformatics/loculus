@@ -42,13 +42,15 @@ spec:
         component: minio
     spec:
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      {{- include "loculus.imagePullSecrets" (list . "minio") | nindent 6 }}
       volumes:
         - name: policy-volume
           configMap:
             name: minio-policies
       containers:
         - name: minio
-          image: minio/minio:latest
+          image: {{ include "loculus.image" (list . .Values.images.minio (.Values.images.minio.tag | default "latest")) }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.minio) }}
           {{- include "loculus.resources" (list "minio" $.Values) | nindent 10 }}
           args: ["server", "/data"]
           ports:

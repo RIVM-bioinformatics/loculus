@@ -24,8 +24,9 @@ spec:
     spec:
      {{- include "possiblePriorityClassName" . | nindent 6 }}
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      {{- include "loculus.imagePullSecrets" (list . "keycloak") | nindent 6 }}
       initContainers:
-{{- include "loculus.configProcessor" (dict "name" "keycloak-config" "dockerTag" $dockerTag "imagePullPolicy" .Values.imagePullPolicy) | nindent 8 }}
+    {{- include "loculus.configProcessor" (dict "name" "keycloak-config" "dockerTag" $dockerTag "root" .) | nindent 8 }}
         - name: keycloak-theme-prep
           resources:
             requests:
@@ -34,14 +35,16 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
-          image: "ghcr.io/loculus-project/keycloakify:{{ $dockerTag }}"
+          image: {{ include "loculus.image" (list . .Values.images.keycloakify ($.Values.images.keycloakify.tag | default $dockerTag)) | quote }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.keycloakify) | quote }}
           volumeMounts:
             - name: theme-volume
               mountPath: /destination
       containers:
         - name: keycloak
           # TODO #1221
-          image: quay.io/keycloak/keycloak:23.0
+          image: {{ include "loculus.image" (list . .Values.images.keycloak (.Values.images.keycloak.tag | default $dockerTag)) | quote }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.keycloak) | quote }}
           {{- include "loculus.resources" (list "keycloak" $.Values) | nindent 10 }}
           env:
             - name: REGISTRATION_TERMS_MESSAGE

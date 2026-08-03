@@ -23,9 +23,11 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" . | nindent 6 }}
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      {{- include "loculus.imagePullSecrets" (list . "enaSubmission") | nindent 6 }}
       initContainers:
         - name: ena-submission-flyway
-          image: "ghcr.io/loculus-project/ena-submission-flyway:{{ $dockerTag }}"
+          image: {{ include "loculus.image" (list . .Values.images.enaSubmissionFlyway (.Values.images.enaSubmissionFlyway.tag | default $dockerTag)) | quote }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.enaSubmissionFlyway) }}
           resources:
             requests:
               cpu: 100m
@@ -52,8 +54,8 @@ spec:
                   key: password
       containers:
         - name: ena-submission
-          image: "ghcr.io/loculus-project/ena-submission:{{ $dockerTag }}"
-          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          image: {{ include "loculus.image" (list . .Values.images.enaSubmission (.Values.images.enaSubmission.tag | default $dockerTag)) | quote }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.enaSubmission) }}
           {{- include "loculus.resources" (list "ena-submission" $.Values) | nindent 10 }}
           env:
             - name: EXTERNAL_METADATA_UPDATER_PASSWORD
@@ -144,11 +146,12 @@ spec:
         spec:
           {{- include "possiblePriorityClassName" . | nindent 10 }}
           {{- include "loculus.podScheduling" . | nindent 10 }}
+          {{- include "loculus.imagePullSecrets" (list . "enaSubmission") | nindent 10 }}
           restartPolicy: Never
           containers:
             - name: ena-submission
-              image: "ghcr.io/loculus-project/ena-submission:{{ $dockerTag }}"
-              imagePullPolicy: {{ $.Values.imagePullPolicy }}
+              image: {{ include "loculus.image" (list . .Values.images.enaSubmission (.Values.images.enaSubmission.tag | default $dockerTag)) | quote }}
+              imagePullPolicy: {{ include "loculus.imagePullPolicy" (list . .Values.images.enaSubmission) }}
               {{- include "loculus.resources" (list "ena-submission-list-cronjob" $.Values) | nindent 14 }}
               env:
                 - name: EXTERNAL_METADATA_UPDATER_PASSWORD

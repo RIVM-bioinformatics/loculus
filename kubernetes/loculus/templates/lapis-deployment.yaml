@@ -25,12 +25,13 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      {{- include "loculus.imagePullSecrets" (list $ "lapis") | nindent 6 }}
       initContainers:
-        {{- include "loculus.configProcessor" (dict "name" "lapis-silo-database-config" "dockerTag" $dockerTag "imagePullPolicy" $.Values.imagePullPolicy) | nindent 8 }}
+        {{- include "loculus.configProcessor" (dict "name" "lapis-silo-database-config" "dockerTag" $dockerTag "root" $) | nindent 8 }}
       containers:
         - name: lapis
-          image: "{{ $.Values.images.lapis.repository }}:{{ $.Values.images.lapis.tag }}"
-          imagePullPolicy: "{{ $.Values.images.lapis.pullPolicy | default $.Values.imagePullPolicy }}"
+          image: {{ include "loculus.image" (list $ $.Values.images.lapis ($.Values.images.lapis.tag | default $dockerTag)) | quote }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list $ $.Values.images.lapis) | quote }}
           {{- include "loculus.resources" (list "lapis" $.Values $key) | nindent 10 }}
           ports:
             - containerPort: 8080

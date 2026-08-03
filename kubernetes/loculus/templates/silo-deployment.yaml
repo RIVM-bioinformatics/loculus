@@ -31,13 +31,14 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      {{- include "loculus.imagePullSecrets" (list $ "loculusSilo") | nindent 6 }}
       initContainers:
-        {{- include "loculus.configProcessor" (dict "name" "lapis-silo-database-config" "dockerTag" $dockerTag "imagePullPolicy" $.Values.imagePullPolicy) | nindent 8 }}
+        {{- include "loculus.configProcessor" (dict "name" "lapis-silo-database-config" "dockerTag" $dockerTag "root" $) | nindent 8 }}
       containers:
         - name: silo
-          image: "{{ $.Values.images.loculusSilo.repository }}:{{ $.Values.images.loculusSilo.tag | default $dockerTag }}"
+          image: {{ include "loculus.image" (list $ $.Values.images.loculusSilo ($.Values.images.loculusSilo.tag | default $dockerTag)) | quote }}
           command: ["/usr/local/bin/silo"]
-          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list $ $.Values.images.loculusSilo) | quote }}
           {{- include "loculus.resources" (list "silo" $.Values $key) | nindent 10 }}
           env:
             - name: SPDLOG_LEVEL
@@ -74,8 +75,8 @@ spec:
             failureThreshold: 3
             timeoutSeconds: 5
         - name: silo-importer
-          image: "{{ $.Values.images.loculusSilo.repository }}:{{ $.Values.images.loculusSilo.tag | default $dockerTag }}"
-          imagePullPolicy: "{{ $.Values.images.loculusSilo.pullPolicy }}"
+          image: {{ include "loculus.image" (list $ $.Values.images.loculusSilo ($.Values.images.loculusSilo.tag | default $dockerTag)) | quote }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (list $ $.Values.images.loculusSilo) | quote }}
           {{- include "loculus.resources" (list "silo-importer" $.Values) | nindent 10 }}
           env:
             - name: BACKEND_BASE_URL
