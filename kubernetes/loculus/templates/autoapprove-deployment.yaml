@@ -27,8 +27,8 @@ spec:
       {{- include "loculus.podScheduling" $ | nindent 6 }}
       containers:
         - name: autoapprove
-          image: {{ include "loculus.image" (dict "name" "autoapprove" "defaultRepository" "ghcr.io/loculus-project/ingest" "values" $.Values) }}
-          imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "autoapprove" "values" $.Values) }}
+          image: ghcr.io/loculus-project/ingest:{{ $dockerTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           {{- include "loculus.resources" (list "ingest" .Values) | nindent 10 }}
           env:
             - name: KEYCLOAK_INGEST_PASSWORD
