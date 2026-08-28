@@ -26,6 +26,7 @@ metadata:
 spec:
   {{- include "possiblePriorityClassName" . | nindent 2 }}
   {{- include "loculus.podScheduling" . | nindent 2 }}
+  {{- include "loculus.podSecurityContext" (list "ingest" $Values) | nindent 2 }}
   serviceAccountName: loculus-ingest-lock
   restartPolicy: Never
   initContainers:
@@ -33,6 +34,7 @@ spec:
       image: {{ include "loculus.image" (dict "name" "busybox" "defaultRepository" "busybox" "defaultTag" "latest" "values" $Values) }}
       imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "busybox" "values" $Values) }}
       {{- include "loculus.resources" (list "ingest-init" $Values) | nindent 6 }}
+      {{- include "loculus.containerSecurityContext" (list "ingest-init" $Values) | nindent 6 }}
       command: ['sh', '-c', '
         CONFIG_VERSION=$(grep "verify_loculus_version_is:" /package/config/config.yaml | sed "s/verify_loculus_version_is: //;");
         DOCKER_TAG="{{ $dockerTag }}";
@@ -52,6 +54,7 @@ spec:
     - name: wait-for-no-other-ingest
       image: {{ include "loculus.image" (dict "name" "kubectl" "defaultRepository" "alpine/kubectl" "defaultTag" "1.36.0" "values" $Values) }}
       imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "kubectl" "values" $Values) }}
+      {{- include "loculus.containerSecurityContext" (list "ingest-init" $Values) | nindent 6 }}
       command:
         - sh
         - -c
@@ -82,6 +85,7 @@ spec:
       image: {{ $organismContent.ingest.image }}:{{ $dockerTag }}
       imagePullPolicy: {{ $Values.imagePullPolicy }}
       {{- include "loculus.resources" (list "ingest" $Values) | nindent 6 }}
+      {{- include "loculus.containerSecurityContext" (list "ingest" $Values) | nindent 6 }}
       env:
         - name: KEYCLOAK_INGEST_PASSWORD
           valueFrom:
