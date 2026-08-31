@@ -137,6 +137,8 @@ spec:
             - containerPort: 8080
             - containerPort: 9000
           volumeMounts:
+            - name: keycloak-data
+              mountPath: /opt/keycloak/data
             - name: keycloak-config-processed
               mountPath: /opt/keycloak/data/import/
             - name: theme-volume
@@ -166,4 +168,6 @@ spec:
         - name: quarkus-build
           emptyDir: {}
         - name: tmp
+          emptyDir: {}
+        - name: keycloak-data
           emptyDir: {}
