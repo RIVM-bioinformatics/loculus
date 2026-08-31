@@ -58,10 +58,18 @@ spec:
             - "--keycloak-password=$(KEYCLOAK_PASSWORD)"
       {{- if $processingConfig.configFile }}
             - "--config=/etc/config/preprocessing-config.yaml"
+      {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      {{- if $processingConfig.configFile }}
             - name: preprocessing-config-volume-{{ $organism }}-v{{ $processingConfig.version }}-{{ $processingIndex }}
               mountPath: /etc/config
+      {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- if $processingConfig.configFile }}
         - name: preprocessing-config-volume-{{ $organism }}-v{{ $processingConfig.version }}-{{ $processingIndex }}
           configMap:
             name: loculus-preprocessing-config-{{ $organism }}-v{{ $processingConfig.version }}-{{ $processingIndex }}

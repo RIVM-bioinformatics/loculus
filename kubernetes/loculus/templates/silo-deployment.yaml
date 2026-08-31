@@ -58,6 +58,8 @@ spec:
           volumeMounts:
             - name: lapis-silo-shared-data
               mountPath: /data
+            - name: silo-logs
+              mountPath: /app/logs
           readinessProbe:
             httpGet:
               path: /info
@@ -126,10 +128,14 @@ spec:
               mountPath: /preprocessing/output
             - name: lapis-silo-input-data-cache
               mountPath: /preprocessing/input
+            - name: silo-logs
+              mountPath: /app/logs
       volumes:
         {{- include "loculus.configVolume" (dict "name" "lapis-silo-database-config" "configmap" (printf "lapis-silo-database-config-%s" $key)) | nindent 8 }}
         - name: lapis-silo-shared-data
           emptyDir: {}
         - name: lapis-silo-input-data-cache
+          emptyDir: {}
+        - name: silo-logs
           emptyDir: {}
 {{- end }}
