@@ -330,8 +330,11 @@ data:
       "loginTheme": "loculus",
       "emailTheme": "loculus",
       "identityProviders" : [
+        {{- $firstIdentityProvider := true -}}
         {{- range $key, $value := .Values.auth.identityProviders }}
         {{- if eq $key "orcid" }}
+        {{- if not $firstIdentityProvider }},{{- end }}
+        {{- $firstIdentityProvider = false -}}
         {
           "alias" : "orcid",
           "providerId" : "orcid",
@@ -352,8 +355,11 @@ data:
         {{- end }}
       ],
       "identityProviderMappers" : [
+        {{- $firstIdentityProviderMapper := true -}}
         {{- range $key, $_ := .Values.auth.identityProviders }}
         {{- if eq $key "orcid" }}
+        {{- if not $firstIdentityProviderMapper }},{{- end }}
+        {{- $firstIdentityProviderMapper = false -}}
         {
           "name" : "username mapper",
           "identityProviderAlias" : "orcid",
