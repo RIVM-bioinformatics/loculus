@@ -30,14 +30,16 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      {{- include "loculus.podSecurityContext" (list "silo" $.Values) | nindent 6 }}
       initContainers:
-        {{- include "loculus.configProcessor" (dict "name" "lapis-silo-database-config" "values" $.Values) | nindent 8 }}
+        {{- include "loculus.configProcessor" (dict "name" "lapis-silo-database-config" "values" $.Values "Values" $.Values) | nindent 8 }}
       containers:
         - name: silo
           image: {{ include "loculus.image" (dict "name" "loculusSilo" "defaultRepository" "ghcr.io/loculus-project/loculus-silo" "values" $.Values) }}
           command: ["/usr/local/bin/silo"]
           imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "loculusSilo" "values" $.Values) }}
           {{- include "loculus.resources" (list "silo" $.Values $key) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "silo" $.Values) | nindent 10 }}
           env:
             - name: SPDLOG_LEVEL
               value: "debug"
@@ -56,6 +58,8 @@ spec:
           volumeMounts:
             - name: lapis-silo-shared-data
               mountPath: /data
+            - name: silo-logs
+              mountPath: /app/logs
           readinessProbe:
             httpGet:
               path: /info
@@ -76,6 +80,7 @@ spec:
           image: {{ include "loculus.image" (dict "name" "loculusSilo" "defaultRepository" "ghcr.io/loculus-project/loculus-silo" "values" $.Values) }}
           imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "loculusSilo" "values" $.Values) }}
           {{- include "loculus.resources" (list "silo-importer" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "silo-importer" $.Values) | nindent 10 }}
           env:
             - name: BACKEND_BASE_URL
               {{- if $.Values.disableBackend }}
@@ -123,10 +128,14 @@ spec:
               mountPath: /preprocessing/output
             - name: lapis-silo-input-data-cache
               mountPath: /preprocessing/input
+            - name: silo-logs
+              mountPath: /app/logs
       volumes:
         {{- include "loculus.configVolume" (dict "name" "lapis-silo-database-config" "configmap" (printf "lapis-silo-database-config-%s" $key)) | nindent 8 }}
         - name: lapis-silo-shared-data
           emptyDir: {}
         - name: lapis-silo-input-data-cache
+          emptyDir: {}
+        - name: silo-logs
           emptyDir: {}
 {{- end }}

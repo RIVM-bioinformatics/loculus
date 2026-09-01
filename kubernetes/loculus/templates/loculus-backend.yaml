@@ -22,13 +22,15 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" . | nindent 6 }}
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      {{- include "loculus.podSecurityContext" (list "backend" $.Values) | nindent 6 }}
       initContainers:
-{{- include "loculus.configProcessor" (dict "name" "loculus-backend-config" "values" $.Values) | nindent 8 }}
+      {{- include "loculus.configProcessor" (dict "name" "loculus-backend-config" "values" $.Values "Values" $.Values) | nindent 8 }}
       containers:
         - name: backend
           image: {{ include "loculus.image" (dict "name" "backend" "defaultRepository" "ghcr.io/loculus-project/backend" "values" $.Values) }}
           imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "backend" "values" $.Values) }}
           {{- include "loculus.resources" (list "backend" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "backend" $.Values) | nindent 10 }}
           startupProbe:
             httpGet:
               path: "/actuator/health/liveness"
@@ -96,8 +98,10 @@ spec:
               {{- .Values.backendExtraArgs | toYaml | nindent 12 }}
             {{- end }}
           env:
+            # If a flag in JVM_OPTS below changes object layout or other observable JVM
+            # semantics, mirror it in the test task in backend/build.gradle
             - name: JVM_OPTS
-              value: -XX:+UseContainerSupport -XX:+UseG1GC -XX:+UseCompactObjectHeaders -XX:MaxHeapFreeRatio=5 -XX:MinHeapFreeRatio=2
+              value: -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseCompactObjectHeaders -XX:MaxHeapFreeRatio=5 -XX:MinHeapFreeRatio=2
           {{- if $.Values.seqSets.crossRef }}
             - name: CROSSREF_USERNAME
               valueFrom:
@@ -175,6 +179,10 @@ spec:
           volumeMounts:
             - name: loculus-backend-config-processed
               mountPath: /config
+            - name: tmp
+              mountPath: /tmp
       volumes:
+        - name: tmp
+          emptyDir: {}
 {{ include "loculus.configVolume" (dict "name" "loculus-backend-config") | nindent 8 }}
 {{- end }}
