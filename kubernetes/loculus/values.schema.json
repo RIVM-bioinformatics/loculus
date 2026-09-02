@@ -678,6 +678,12 @@
                 "type": "string",
                 "description": "Docker image for the preprocessing pipeline."
               },
+              "imageKey": {
+                "groups": ["preprocessing"],
+                "docsIncludePrefix": false,
+                "type": "string",
+                "description": "Optional key in the top-level images map used to override this preprocessing image per deployment."
+              },
               "dockerTag": {
                 "groups": ["preprocessing"],
                 "docsIncludePrefix": false,
@@ -1740,6 +1746,18 @@
           "enum": [2, 3],
           "default": 3,
           "description": "Traefik major version for CRD API group. Use 2 for traefik.containo.us/v1alpha1 (Traefik v2) or 3 for traefik.io/v1alpha1 (Traefik v3)."
+        },
+        "gatewayName": {
+          "groups": ["general"],
+          "type": "string",
+          "default": "traefik",
+          "description": "Name of the shared Traefik Gateway resource that owns the Loculus HTTPRoute entries."
+        },
+        "gatewayNamespace": {
+          "groups": ["general"],
+          "type": "string",
+          "default": "ingress-traefik",
+          "description": "Namespace of the shared Traefik Gateway resource that owns the Loculus HTTPRoute entries."
         }
       }
     },
@@ -2256,6 +2274,10 @@
         "deaconIndex": {
           "allOf": [{ "$ref": "#/definitions/imageSpec" }],
           "description": "Overrides the deacon-index image. Defaults to `ghcr.io/loculus-project/deacon-index:latest`; `pullPolicy` falls back to the global `imagePullPolicy`."
+        },
+        "preprocessingNextclade": {
+          "allOf": [{ "$ref": "#/definitions/imageSpec" }],
+          "description": "Overrides preprocessing pipelines that select the preprocessingNextclade image key."
         },
         "autoapprove": {
           "allOf": [{ "$ref": "#/definitions/imageSpec" }],

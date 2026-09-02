@@ -11,6 +11,7 @@
 {{- $flattened := include "loculus.flattenPreprocessingVersions" $item.contents.preprocessing | fromJson }}
 {{- range $processingIndex, $processingConfig := $flattened.items }}
 {{- $thisDockerTag := $processingConfig.dockerTag | default $dockerTag }}
+{{- $imageKey := $processingConfig.imageKey | default "" }}
 {{- $replicas := $processingConfig.replicas | default 1 }}
 ---
 apiVersion: apps/v1
@@ -38,8 +39,13 @@ spec:
       {{- include "loculus.podSecurityContext" (list "preprocessing" $.Values) | nindent 6 }}
       containers:
         - name: preprocessing-{{ $organism }}
-          image: {{ $processingConfig.image}}:{{ $thisDockerTag }}
+          {{- if $imageKey }}
+          image: {{ include "loculus.image" (dict "name" $imageKey "defaultRepository" $processingConfig.image "defaultTag" $thisDockerTag "values" $.Values) }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" $imageKey "values" $.Values) }}
+          {{- else }}
+          image: {{ $processingConfig.image }}:{{ $thisDockerTag }}
           imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          {{- end }}
           {{- include "loculus.resources" (list "preprocessing" $.Values) | nindent 10 }}
           {{- include "loculus.containerSecurityContext" (list "preprocessing" $.Values) | nindent 10 }}
           env:
