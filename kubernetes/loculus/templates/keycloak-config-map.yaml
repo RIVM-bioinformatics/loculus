@@ -27,6 +27,8 @@ data:
       },
       {{- end }}
       "registrationAllowed": {{ $.Values.auth.registrationAllowed }},
+      "eventsEnabled": {{ $.Values.auth.eventsEnabled }},
+      "eventsExpiration": {{ $.Values.auth.eventsExpiration }},
       "accessTokenLifespan": 36000,
       "ssoSessionIdleTimeout": 36000,
       "actionTokenGeneratedByUserLifespan": 1800,

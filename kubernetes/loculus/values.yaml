@@ -2857,6 +2857,8 @@ auth:
   verifyEmail: false
   resetPasswordAllowed: true
   registrationAllowed: true
+  eventsEnabled: true
+  eventsExpiration: 604800
 insecureCookies: false
 bannerMessage: "This is a demonstration environment. It may contain non-accurate test data and should not be used for real-world applications. Data will be deleted regularly."
 welcomeMessageHTML: null

@@ -1871,6 +1871,19 @@
           "default": true,
           "description": "If true, allows users to register new accounts in Keycloak."
         },
+        "eventsEnabled": {
+          "groups": ["auth"],
+          "type": "boolean",
+          "default": true,
+          "description": "If true, stores Keycloak user events for auditing and troubleshooting."
+        },
+        "eventsExpiration": {
+          "groups": ["auth"],
+          "type": "integer",
+          "minimum": 0,
+          "default": 604800,
+          "description": "Number of seconds Keycloak retains stored user events. Zero means events do not expire."
+        },
         "identityProviders": {
           "type": "object",
           "additionalProperties": false,
