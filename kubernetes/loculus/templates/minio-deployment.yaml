@@ -42,6 +42,7 @@ spec:
         component: minio
     spec:
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
       {{- include "loculus.podSecurityContext" (list "minio" $.Values) | nindent 6 }}
       volumes:
         - name: policy-volume

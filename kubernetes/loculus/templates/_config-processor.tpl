@@ -7,8 +7,14 @@
       mountPath: /input
     - name: {{ .name }}-processed
       mountPath: /output
-  command: ["python3"]
-  args: ["/app/config-processor.py", "/input", "/output"]
+    - name: {{ .name }}-staging
+      mountPath: /staging
+  # Process into a directory this container creates itself, then copy the contents.
+  # shutil.copytree copies the source directory's metadata onto an existing target,
+  # which fails on the kubelet-owned /output emptyDir unless the container runs as root.
+  command: ["sh", "-c"]
+  args:
+    - python3 /app/config-processor.py /input /staging/processed && cp -R /staging/processed/. /output/
   resources:
     requests:
       cpu: 50m
@@ -61,6 +67,8 @@
   configMap:
     name: {{ if .configmap }}{{ .configmap }}{{ else }}{{ .name }}{{ end }}
 - name: {{ .name }}-processed
+  emptyDir: {}
+- name: {{ .name }}-staging
   emptyDir: {}
 {{- end }}
 

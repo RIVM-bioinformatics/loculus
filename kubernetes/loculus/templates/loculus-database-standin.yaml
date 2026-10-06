@@ -25,6 +25,7 @@ spec:
         component: database
     spec:
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
       {{- include "loculus.podSecurityContext" (list "database" .Values) | nindent 6 }}
       containers:
       - name: database
