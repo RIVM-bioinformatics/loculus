@@ -25,6 +25,7 @@ spec:
         component: docs
     spec:
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
       {{- include "loculus.podSecurityContext" (list "docs" .Values) | nindent 6 }}
       containers:
         - name: docs

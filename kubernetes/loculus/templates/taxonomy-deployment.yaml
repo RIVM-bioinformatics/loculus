@@ -23,11 +23,13 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      automountServiceAccountToken: false
       {{- include "loculus.podSecurityContext" (list "taxonomy-service" $.Values) | nindent 6 }}
       initContainers:
         - name: download-taxonomy-db
           image: {{ include "loculus.image" (dict "name" "alpine" "defaultRepository" "alpine" "defaultTag" "3" "values" $.Values) }}
           imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "alpine" "values" $.Values) }}
+          {{- include "loculus.resources" (list "download-taxonomy-db" $.Values) | nindent 10 }}
           {{- include "loculus.containerSecurityContext" (list "download-taxonomy-db" $.Values) | nindent 10 }}
           command: ["sh", "-c"]
           args:

@@ -25,6 +25,7 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      automountServiceAccountToken: false
       {{- include "loculus.podSecurityContext" (list "ingest" .Values) | nindent 6 }}
       containers:
         - name: autoapprove

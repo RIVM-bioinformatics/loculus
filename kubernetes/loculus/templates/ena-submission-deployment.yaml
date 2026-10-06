@@ -23,6 +23,7 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" . | nindent 6 }}
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
       {{- include "loculus.podSecurityContext" (list "ena-submission" .Values) | nindent 6 }}
       initContainers:
         - name: ena-submission-flyway
@@ -148,6 +149,7 @@ spec:
         spec:
           {{- include "possiblePriorityClassName" . | nindent 10 }}
           {{- include "loculus.podScheduling" . | nindent 10 }}
+          automountServiceAccountToken: false
           {{- include "loculus.podSecurityContext" (list "ena-submission-list-cronjob" $.Values) | nindent 10 }}
           restartPolicy: Never
           containers:

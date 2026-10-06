@@ -23,6 +23,7 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      automountServiceAccountToken: false
       {{- include "loculus.podSecurityContext" (list "raw-reads-processing" $.Values) | nindent 6 }}
       containers:
         - name: raw-reads-processing
