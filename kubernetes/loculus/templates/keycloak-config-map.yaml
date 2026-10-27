@@ -1,3 +1,18 @@
+{{- $keycloakHost := (printf "authentication%s%s" $.Values.subdomainSeparator $.Values.host) }}
+{{- $browserRedirectUris := list }}
+{{- $postLogoutRedirectUris := list }}
+{{- if $.Values.host }}
+{{- $browserRedirectUris = append $browserRedirectUris (printf "https://%s/auth/callback" $.Values.host) }}
+{{- $postLogoutRedirectUris = append $postLogoutRedirectUris (printf "https://%s/logout" $.Values.host) }}
+{{- if $.Values.insecureCookies }}
+{{- $browserRedirectUris = append $browserRedirectUris (printf "http://%s/auth/callback" $.Values.host) }}
+{{- $postLogoutRedirectUris = append $postLogoutRedirectUris (printf "http://%s/logout" $.Values.host) }}
+{{- end }}
+{{- end }}
+{{- if $.Values.allowLocalhostAuthRedirects }}
+{{- $browserRedirectUris = append $browserRedirectUris "http://localhost:3000/auth/callback" | uniq }}
+{{- $postLogoutRedirectUris = append $postLogoutRedirectUris "http://localhost:3000/logout" | uniq }}
+{{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -258,13 +273,11 @@ data:
           "publicClient": true,
           "directAccessGrantsEnabled": true,
           {{- $websiteUrl := include "loculus.websiteUrl" . | trimSuffix "/" }}
-          {{- $redirectUris := list (printf "%s/*" $websiteUrl) }}
-          {{- /* only accept a plaintext redirect where the deployment actually serves plain HTTP:
-                 with HTTPS enforced, an http:// redirect URI is a machine-in-the-middle handle on the auth code */}}
-          {{- if not $.Values.networking.enforceHTTPS }}
-            {{- $redirectUris = append $redirectUris (printf "http://%s/*" ($websiteUrl | trimPrefix "https://" | trimPrefix "http://")) }}
-          {{- end }}
-          "redirectUris": {{ append $redirectUris "http://localhost:3000/*" | uniq | toJson }}
+          "redirectUris": {{ $browserRedirectUris | toJson }},
+          "attributes": {
+            "pkce.code.challenge.method": "S256",
+            "post.logout.redirect.uris": {{ $postLogoutRedirectUris | join "##" | quote }}
+          }
         },
         {
           "clientId" : "account-console2",

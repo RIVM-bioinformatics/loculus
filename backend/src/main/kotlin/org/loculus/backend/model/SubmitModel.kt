@@ -30,6 +30,7 @@ import org.loculus.backend.service.submission.SubmissionIdFilesMappingPreconditi
 import org.loculus.backend.service.submission.UploadDatabaseService
 import org.loculus.backend.utils.DateProvider
 import org.loculus.backend.utils.FastaReader
+import org.loculus.backend.utils.extractDuplicateRecordId
 import org.loculus.backend.utils.metadataEntryStreamAsSequence
 import org.loculus.backend.utils.revisionEntryStreamAsSequence
 import org.springframework.stereotype.Service
@@ -46,9 +47,6 @@ const val FASTA_IDS_SEPARATOR = " "
 const val FILES_HEADER_PREFIX = "files."
 const val FILES_SEPARATOR = " "
 const val FILE_NAME_ID_SEPARATOR = ":"
-
-// File IDs are currently validated to be UUIDs of standard length
-const val FILE_ID_LENGTH = 36
 
 const val ACCESSION_HEADER = "accession"
 private val log = KotlinLogging.logger { }
@@ -137,7 +135,7 @@ class SubmitModel(
                 )
             }
 
-            if (requiresConsensusSequenceFile(submissionParams.organism)) {
+            if (backendConfig.consensusSequencesEnabled(submissionParams.organism)) {
                 submissionMetrics.timeWritePhase(endpoint, organism, VALIDATE_CONSENSUS_SEQUENCES_PHASE) {
                     log.debug { "Validating submission with uploadId $uploadId" }
                     val metadataFastaIds = uploadDatabaseService.getFastaIdsForMetadata(uploadId).flatten()
@@ -175,6 +173,7 @@ class SubmitModel(
                     submissionIdFilesMappingPreconditionValidator
                         .validateFilenameCharacters(files)
                         .validateFilenamesAreUnique(files)
+                        .validateFileIdsAreUnique(files)
                         .validateCategoriesMatchSchema(files, submissionParams.organism)
                         .validateMultipartUploads(files)
                         .validateFilesExist(files)
@@ -217,7 +216,7 @@ class SubmitModel(
             metadataFileTypes,
             metadataTempFileToDelete,
         )
-        val requireConsensusSequence = requiresConsensusSequenceFile(submissionParams.organism)
+        val consensusSequenceEnabled = backendConfig.consensusSequencesEnabled(submissionParams.organism)
         try {
             uploadMetadata(uploadId, submissionParams, metadataStream, batchSize)
         } finally {
@@ -226,14 +225,14 @@ class SubmitModel(
 
         val sequenceFile = submissionParams.sequenceFile
         if (sequenceFile == null) {
-            if (requireConsensusSequence) {
+            if (consensusSequenceEnabled) {
                 throw BadRequestException(
                     "Submissions for organism ${submissionParams.organism.name} require a sequence file.",
                 )
             }
             return
         }
-        if (!requireConsensusSequence) {
+        if (!consensusSequenceEnabled) {
             throw BadRequestException(
                 "Sequence uploads are not allowed for organism ${submissionParams.organism.name}.",
             )
@@ -336,7 +335,7 @@ class SubmitModel(
         } catch (e: ExposedSQLException) {
             if (e.sqlState == UNIQUE_CONSTRAINT_VIOLATION_SQL_STATE) {
                 throw DuplicateKeyException(
-                    "Metadata file contains at least one duplicate submissionId: ${e.cause?.cause}",
+                    "Metadata file contains at least one duplicate submissionId" + e.duplicateIdSuffix(uploadId),
                 )
             }
             throw e
@@ -357,12 +356,23 @@ class SubmitModel(
             } catch (e: ExposedSQLException) {
                 if (e.sqlState == UNIQUE_CONSTRAINT_VIOLATION_SQL_STATE) {
                     throw DuplicateKeyException(
-                        "Sequence file contains at least one duplicate submissionId: ${e.cause?.cause}",
+                        "Sequence file contains at least one duplicate FASTA ID" + e.duplicateIdSuffix(uploadId),
                     )
                 }
                 throw e
             }
         }
+    }
+
+    private fun ExposedSQLException.duplicateIdSuffix(uploadId: String): String {
+        val duplicateId = extractDuplicateRecordId(uploadId)
+        if (duplicateId == null) {
+            log.error(this) {
+                "Could not extract the duplicate ID from unique constraint violation for upload $uploadId"
+            }
+            return ""
+        }
+        return ": ${duplicateId.value}"
     }
 
     private fun getFileType(file: MultipartFile, expectedFileType: ValidExtension): CompressionAlgorithm {
@@ -446,11 +456,6 @@ class SubmitModel(
             }
         }
     }
-
-    private fun requiresConsensusSequenceFile(organism: Organism): Boolean = backendConfig.getInstanceConfig(organism)
-        .schema
-        .submissionDataTypes
-        .consensusSequences
 
     private fun UploadType.metricEndpoint() = when (this) {
         UploadType.ORIGINAL -> SUBMIT_ENDPOINT

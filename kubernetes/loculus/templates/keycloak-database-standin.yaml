@@ -29,8 +29,8 @@ spec:
       {{- include "loculus.podSecurityContext" (list "keycloak-database" .Values) | nindent 6 }}
       containers:
         - name: loculus-keycloak-database
-          image: {{ include "loculus.image" (dict "name" "postgres" "defaultRepository" "postgres" "defaultTag" "15.12" "values" $.Values) }}
-          imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "postgres" "values" $.Values) }}
+          image: "{{ $.Values.images.postgres.repository }}:{{ $.Values.images.postgres.tag }}"
+          imagePullPolicy: "{{ $.Values.images.postgres.pullPolicy }}"
           resources:
             requests:
               memory: "30Mi"

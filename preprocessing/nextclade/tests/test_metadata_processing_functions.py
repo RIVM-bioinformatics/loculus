@@ -1,9 +1,12 @@
 # ruff: noqa: S101
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from unittest import mock
 
 import pytest
+import requests
 from factory_methods import (
+    DEFAULT_EXTERNAL_SERVICES,
+    DEFAULT_TEST_CONTEXT,
     Case,
     ProcessedEntryFactory,
     ProcessingAnnotationHelper,
@@ -14,6 +17,7 @@ from factory_methods import (
     verify_processed_entry,
 )
 
+from loculus_preprocessing import external_services
 from loculus_preprocessing.config import Config, ProcessingSpec, get_config, get_processing_order
 from loculus_preprocessing.datatypes import (
     AnnotationSource,
@@ -23,8 +27,6 @@ from loculus_preprocessing.datatypes import (
     FunctionArgs,
     InputMetadata,
     ProcessedEntry,
-    UnprocessedData,
-    UnprocessedEntry,
 )
 from loculus_preprocessing.prepro import process_all
 from loculus_preprocessing.processing_functions import (
@@ -41,7 +43,6 @@ METADATA_DEPENDENCY_CONFIG = "tests/metadata_dependency.yaml"
 test_case_definitions = [
     Case(
         name="missing_required_fields",
-        input_metadata={"submissionId": "missing_required_fields"},
         accession_id="0",
         expected_metadata={"concatenated_string": "LOC_0.1"},
         expected_errors=build_processing_annotations(
@@ -61,7 +62,7 @@ test_case_definitions = [
     ),
     Case(
         name="missing_one_required_field",
-        input_metadata={"submissionId": "missing_one_required_field", "name_required": "name"},
+        input_metadata={"name_required": "name"},
         accession_id="1",
         expected_metadata={
             "name_required": "name",
@@ -79,7 +80,7 @@ test_case_definitions = [
     ),
     Case(
         name="insdc_ingest group can submit without required fields",
-        input_metadata={"submissionId": "missing_one_required_field", "name_required": "name"},
+        input_metadata={"name_required": "name"},
         accession_id="21",
         expected_metadata={
             "name_required": "name",
@@ -89,9 +90,23 @@ test_case_definitions = [
         group_id=1,
     ),
     Case(
+        name="insdc_ingest group can submit authors with non-alphabetic ASCII characters",
+        input_metadata={
+            "name_required": "name",
+            "authors": "O`Brien9, Anna; Müller (Jr) & Co, Anna_Maria?",
+        },
+        accession_id="23",
+        expected_metadata={
+            "name_required": "name",
+            "concatenated_string": "LOC_23.1",
+            "required_collection_date": None,
+            "authors": "O`Brien9, Anna; Müller (Jr) & Co, Anna_Maria?",
+        },
+        group_id=1,
+    ),
+    Case(
         name="invalid_option",
         input_metadata={
-            "submissionId": "invalid_option",
             "continent": "Afrika",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -113,9 +128,29 @@ test_case_definitions = [
         ),
     ),
     Case(
+        name="invalid_value_for_required_field_only_reports_invalid_value",
+        input_metadata={
+            "name_required": "name",
+            "ncbi_required_collection_date": "not a date",
+        },
+        accession_id="22",
+        expected_metadata={
+            "name_required": "name",
+            "concatenated_string": "LOC_22.1",
+        },
+        expected_errors=build_processing_annotations(
+            [
+                ProcessingAnnotationHelper(
+                    ["ncbi_required_collection_date"],
+                    ["required_collection_date"],
+                    "Metadata field required_collection_date: Date format is not recognized.",
+                ),
+            ]
+        ),
+    ),
+    Case(
         name="collection_date_in_future",
         input_metadata={
-            "submissionId": "collection_date_in_future",
             "collection_date": "2088-12-01",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -140,7 +175,6 @@ test_case_definitions = [
     Case(
         name="invalid_collection_date",
         input_metadata={
-            "submissionId": "invalid_collection_date",
             "collection_date": "01-02-2024",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -164,7 +198,6 @@ test_case_definitions = [
     Case(
         name="invalid_timestamp",
         input_metadata={
-            "submissionId": "invalid_timestamp",
             "sequenced_timestamp": " 2022-11-01Europe",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -191,7 +224,6 @@ test_case_definitions = [
     Case(
         name="date_only_year",
         input_metadata={
-            "submissionId": "date_only_year",
             "collection_date": "2023",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -220,7 +252,6 @@ test_case_definitions = [
     Case(
         name="regex_match",
         input_metadata={
-            "submissionId": "date_only_year",
             "collection_date": "2023-01-01",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -241,7 +272,6 @@ test_case_definitions = [
     Case(
         name="regex_empty_capture_group",
         input_metadata={
-            "submissionId": "date_only_year",
             "collection_date": "2023-01-01",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -273,7 +303,6 @@ test_case_definitions = [
     Case(
         name="regex_match",
         input_metadata={
-            "submissionId": "date_only_year",
             "collection_date": "2023-01-01",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -313,7 +342,6 @@ test_case_definitions = [
     Case(
         name="date_no_day",
         input_metadata={
-            "submissionId": "date_no_day",
             "collection_date": "2023-12",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -339,7 +367,6 @@ test_case_definitions = [
     Case(
         name="invalid_int",
         input_metadata={
-            "submissionId": "invalid_int",
             "age_int": "asdf",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -361,7 +388,6 @@ test_case_definitions = [
     Case(
         name="invalid_float",
         input_metadata={
-            "submissionId": "invalid_float",
             "percentage_float": "asdf",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -385,7 +411,6 @@ test_case_definitions = [
     Case(
         name="invalid_date",
         input_metadata={
-            "submissionId": "invalid_date",
             "name_required": "name",
             "other_date": "01-02-2024",
             "ncbi_required_collection_date": "2022-11-01",
@@ -412,7 +437,6 @@ test_case_definitions = [
     Case(
         name="invalid_boolean",
         input_metadata={
-            "submissionId": "invalid_boolean",
             "name_required": "name",
             "is_lab_host_bool": "maybe",
             "ncbi_required_collection_date": "2022-11-01",
@@ -436,7 +460,6 @@ test_case_definitions = [
     Case(
         name="warn_potential_author_error",
         input_metadata={
-            "submissionId": "warn_potential_author_error",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": "Anna Smith, Cameron Tucker",
@@ -470,7 +493,6 @@ test_case_definitions = [
     Case(
         name="non_latin_characters_authors",
         input_metadata={
-            "submissionId": "non_latin_characters_authors",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": "Pérez, José; Bailley, François; 汉",
@@ -494,7 +516,6 @@ test_case_definitions = [
     Case(
         name="diacritics_in_authors",
         input_metadata={
-            "submissionId": "diacritics_in_authors",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": "Pérez, José; Bailley, François; Møller, Anäis; Wałęsa, Lech",
@@ -512,7 +533,6 @@ test_case_definitions = [
     Case(
         name="nan_float",
         input_metadata={
-            "submissionId": "nan_float",
             "percentage_float": "NaN",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -529,7 +549,6 @@ test_case_definitions = [
     Case(
         name="infinity_float",
         input_metadata={
-            "submissionId": "infinity_float",
             "percentage_float": "Infinity",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
@@ -553,7 +572,6 @@ test_case_definitions = [
     Case(
         name="and_in_authors",
         input_metadata={
-            "submissionId": "and_in_authors",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": "Smith, Anna; Perez, Tom J. and Xu X.L.",
@@ -583,7 +601,6 @@ test_case_definitions = [
     Case(
         name="trailing_dots_in_authors",
         input_metadata={
-            "submissionId": "trailing_dots_in_authors",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": (
@@ -609,7 +626,6 @@ test_case_definitions = [
     Case(
         name="invalid_author_names_listed",
         input_metadata={
-            "submissionId": "invalid_author_names_listed",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": "Smith, Anna; Invalid Name; BadFormat123; Perez, Tom J.; 12345; NoComma",
@@ -641,7 +657,6 @@ test_case_definitions = [
     Case(
         name="strip_spaces_in_metadata",
         input_metadata={
-            "submissionId": "strip_spaces_in_metadata",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": " Smith, John II; Doe, A.B.C. \t",
@@ -669,14 +684,23 @@ accepted_authors = {
     "Xi, ;Yu,X.": "Xi, ; Yu, X.",
     "Xi,;": "Xi,",
     "Xi,": "Xi,",
-    "Smith, Anna Maria; Perez, Jose X.;": "Smith, Anna Maria; Perez, Jose X.",
+    "O'Brian, Anna Maria; Perez, Jose X.;": "O'Brian, Anna Maria; Perez, Jose X.",
     "Smith,Anna Maria;Perez,Jose X;": "Smith, Anna Maria; Perez, Jose X.",
     "de souza, a.": "de souza, A.",
     "McGregor, Ewan": "McGregor, Ewan",
     "'t Hooft, Gerard": "'t Hooft, Gerard",
     "Tandoc, A. 3rd": "Tandoc, A. 3rd",
 }
-not_accepted_authors = [
+# Only accepted for the INSDC ingest group
+accepted_authors_all_ascii = [
+    "Nebenf##hr, M.",
+    "Lee Cynthia K, [. U. S. ].'; 'Monath Thomas P, [. U. S. ].';",
+    "An?elic Dmitrovic,B.",
+    "Dall&aposAmico, L.",
+    "Smith9, Anna;",
+    "O`Brien, Anna;",
+]
+never_accepted_authors = [
     ";",
     ",;",
     " ,;",
@@ -685,7 +709,7 @@ not_accepted_authors = [
     "Anna Maria Smith; Jose X. Perez",
     "Anna Maria Smith;",
     "Anna Maria Smith",
-    "Smith9, Anna;",
+    "Smith, Anna, Maria",
     "Anna Smith, Cameron Tucker, and Jose Perez",
     "Count4th, EwanMcGregor, Count4th",
 ]
@@ -702,7 +726,6 @@ test_metadata_dependency_test_definitions = [
     Case(
         name="metadata_dependencies_all_present",
         input_metadata={
-            "submissionId": "metadata_dependency",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "continent": "Asia",
@@ -741,7 +764,6 @@ test_metadata_dependency_test_definitions = [
     Case(
         name="raw_reads_prerequisite_missing",
         input_metadata={
-            "submissionId": "raw_reads_prerequisite_missing",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "continent": "Asia",
@@ -779,7 +801,6 @@ test_metadata_dependency_test_definitions = [
     Case(
         name="processed_field_prerequisite_missing",
         input_metadata={
-            "submissionId": "processed_field_prerequisite_missing",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "continent": "Asia",
@@ -813,7 +834,6 @@ test_metadata_dependency_test_definitions = [
     Case(
         name="required_when_input_A",
         input_metadata={
-            "submissionId": "required_when_input_A",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "continent": "Asia",
@@ -847,7 +867,6 @@ test_metadata_dependency_test_definitions = [
     Case(
         name="missing_multi_dep_fails_when_one_requiredWhen_condition_present",
         input_metadata={
-            "submissionId": "multi_dep_fails_when_one_present",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "continent": "Asia",
@@ -880,7 +899,6 @@ test_metadata_dependency_test_definitions = [
     Case(
         name="missing_multi_dep_fails_when_all_requiredWhen_condition_present",
         input_metadata={
-            "submissionId": "multi_dep_fails_when_all_present",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "continent": "Asia",
@@ -958,7 +976,6 @@ file_case_definitions = [
     Case(
         name="with file",
         input_metadata={
-            "submissionId": "with_file",
             "name_required": "name",
             "ncbi_required_collection_date": "2022-11-01",
             "authors": "Smith, Anna; Perez, Tom J.",
@@ -1084,6 +1101,7 @@ def test_processing_order() -> None:
 
 def test_required_field_message_lists_only_user_input_fields() -> None:
     config = get_config(NO_ALIGNMENT_CONFIG, ignore_args=True)
+    config.extra_input_fields.append("extra_user_input")
     config.processing_spec.update(
         {
             "user_input": ProcessingSpec(function="identity", inputs={"input": "user_input"}),
@@ -1107,7 +1125,7 @@ def test_required_field_message_lists_only_user_input_fields() -> None:
     config.processing_order = get_processing_order(config)
 
     entry = UnprocessedEntryFactory.create_unprocessed_entry(
-        metadata_dict={"submissionId": "no_input_filtering", "name_required": "name"},
+        metadata_dict={"name_required": "name"},
         accession_id="0",
         sequences={"main": None},
     )
@@ -1124,22 +1142,78 @@ def test_required_field_message_lists_only_user_input_fields() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("field_name", "value", "is_insdc_ingest", "expected_errors", "expected_warnings"),
+    [
+        # A field marked `noInput` may not be provided by the user
+        (
+            "non_user_input",
+            "illegal_user_input",
+            False,
+            [],
+            ["Metadata field `non_user_input` may not be provided as input and will be ignored."],
+        ),
+        # A field without a processing spec and not declared as an extraInputField
+        (
+            "unrecognized_field",
+            "some_value",
+            False,
+            [],
+            ["Metadata field `unrecognized_field` is not recognized and will be ignored."],
+        ),
+        # extraInputFields are recognized even though they have no processing spec
+        ("extra_input_field", "some_value", False, [], []),
+        # Nothing is checked if no value was provided, e.g. an empty column
+        ("non_user_input", "", False, [], []),
+        ("unrecognized_field", "", False, [], []),
+        # The INSDC ingest group submits fields that users may not, and is not checked
+        ("non_user_input", "illegal_user_input", True, [], []),
+        ("unrecognized_field", "some_value", True, [], []),
+    ],
+)
+def test_submitted_metadata_is_checked_against_config(
+    field_name: str,
+    value: str,
+    is_insdc_ingest: bool,
+    expected_errors: list[str],
+    expected_warnings: list[str],
+) -> None:
+    config = get_config(NO_ALIGNMENT_CONFIG, ignore_args=True)
+    config.extra_input_fields.append("extra_input_field")
+    config.processing_spec["non_user_input"] = ProcessingSpec(
+        function="identity",
+        inputs={"input": "non_user_input"},
+        no_input=True,
+    )
+    config.processing_order = get_processing_order(config)
+
+    entry = UnprocessedEntryFactory.create_unprocessed_entry(
+        metadata_dict={field_name: value},
+        accession_id="0",
+        sequences={"main": None},
+        group_id=config.insdc_ingest_group_id if is_insdc_ingest else 2,
+    )
+    processed_entry = process_all([entry], "temp_dataset_dir", config)[0].processed_entry
+
+    # Other errors (e.g. missing required fields) are unrelated to the submitted field
+    errors = [
+        annotation.message
+        for annotation in processed_entry.errors
+        if annotation.processedFields and annotation.processedFields[0].name == field_name
+    ]
+    assert errors == expected_errors
+    assert [annotation.message for annotation in processed_entry.warnings] == expected_warnings
+
+
 def test_preprocessing_without_consensus_sequences(config: Config) -> None:
     sequence_name = "entry without sequences"
-    sequence_entry_data = UnprocessedEntry(
-        accessionVersion="LOC_01.1",
-        data=UnprocessedData(
-            submitter="test_submitter",
-            submissionId="test_submission_id",
-            group_id=2,
-            submittedAt=ts_from_ymd(2021, 12, 15),
-            metadata={
-                "ncbi_required_collection_date": "2024-01-01",
-                "name_required": sequence_name,
-            },
-            unalignedNucleotideSequences={},
-            files=None,
-        ),
+    sequence_entry_data = UnprocessedEntryFactory.create_unprocessed_entry(
+        metadata_dict={
+            "ncbi_required_collection_date": "2024-01-01",
+            "name_required": sequence_name,
+        },
+        accession_id="01",
+        sequences={},
     )
 
     result = process_all([sequence_entry_data], "temp_dataset_dir", config)
@@ -1155,15 +1229,26 @@ def test_preprocessing_without_consensus_sequences(config: Config) -> None:
     assert processed_entry.data.aminoAcidInsertions == {}
 
 
-def test_valid_authors() -> None:
-    for author in accepted_authors:
-        if valid_authors(author) is not True:
-            msg = f"{author} should be accepted but is not."
-            raise AssertionError(msg)
-    for author in not_accepted_authors:
-        if valid_authors(author) is not False:
-            msg = f"{author} should not be accepted but is."
-            raise AssertionError(msg)
+@pytest.mark.parametrize(
+    ("authors", "allow_all_ascii", "expected"),
+    [
+        (accepted_authors, False, True),
+        (accepted_authors, True, True),
+        (accepted_authors_all_ascii, False, False),
+        (accepted_authors_all_ascii, True, True),
+        (never_accepted_authors, False, False),
+        (never_accepted_authors, True, False),
+    ],
+)
+def test_valid_authors(
+    authors: list[str],
+    allow_all_ascii: bool,
+    expected: bool,
+) -> None:
+    for author in authors:
+        assert valid_authors(author, allow_all_ascii=allow_all_ascii) is expected, (
+            f"{author!r}: expected {expected} with allow_all_ascii={allow_all_ascii}"
+        )
 
 
 def test_format_authors() -> None:
@@ -1177,355 +1262,255 @@ def test_format_authors() -> None:
             raise AssertionError(msg)
 
 
-def test_parse_date_into_range() -> None:
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-12"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2022, 12, 15),
-            },
-        ).datum
-        == "2021-12"
-    ), "dateRangeString: 2021-12 should be returned as is."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-12"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeLower",
-                "submittedAt": ts_from_ymd(2021, 12, 15),
-            },
-        ).datum
-        == "2021-12-01"
-    ), "dateRangeLower: 2021-12 should be returned as 2021-12-01."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-12"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2022, 12, 15),
-            },
-        ).datum
-        == "2021-12-31"
-    ), "dateRangeUpper: 2021-12 should be returned as 2021-12-31."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-12"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2021, 12, 15),
-            },
-        ).datum
-        == "2021-12-15"
-    ), "dateRangeUpper: 2021-12 should be returned as submittedAt time: 2021-12-15."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-02"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2021, 3, 15),
-            },
-        ).datum
-        == "2021-02-28"
-    ), "dateRangeUpper: 2021-02 should be returned as 2021-02-28."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2021, 12, 15),
-            },
-        ).datum
-        == "2021-12-15"
-    ), "dateRangeUpper: 2021 should be returned as 2021-12-15."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2022, 1, 15),
-            },
-        ).datum
-        == "2021-12-31"
-    ), "dateRangeUpper: 2021 should be returned as 2021-12-31."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-12", "releaseDate": "2021-12-15"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2021, 12, 16),
-            },
-        ).datum
-        == "2021-12-15"
-    ), "dateRangeUpper: 2021-12 with releaseDate 2021-12-15 should be returned as 2021-12-15."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "", "releaseDate": "2021-12-15"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2021, 12, 16),
-            },
-        ).datum
-        == "2021-12-15"
-    ), "dateRangeUpper: empty date with releaseDate 2021-12-15 should be returned as 2021-12-15."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": ""},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2021, 12, 16),
-            },
-        ).datum
-        is None
-    ), "dateRangeString: empty date should be returned as None."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "not.date"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2021, 12, 16),
-            },
-        ).datum
-        is None
-    ), "dateRangeString: invalid date should be returned as None."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "", "releaseDate": "2021-12-15"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeLower",
-                "submittedAt": ts_from_ymd(2021, 12, 16),
-            },
-        ).datum
-        is None
-    ), "dateRangeLower: empty date should be returned as None."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021-01-02 TO 2021-06-30]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeLower",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-01-02"
-    ), "dateRangeLower: lucene range should return lower bound."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021 TO 2021-06-30]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeLower",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-01-01"
-    ), "dateRangeLower: lucene range should return lower bound of leading year."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021-01-01 TO 2021-06-30]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-06-30"
-    ), "dateRangeUpper: lucene range should return upper bound."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021-01-01 TO 2021]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-12-31"
-    ), "dateRangeUpper: lucene range should return upper bound of final date."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021-05-01 TO 2021-06-30]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-05/2021-06"
-    ), "dateRangeString: lucene range should be returned in ISO format (compressed to month range)."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021 TO 2021-06]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-01/2021-06"
-    ), "dateRangeString: lucene range should be returned in ISO format (compressed to month range)."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-03-05/2021-06-30"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeLower",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-03-05"
-    ), "dateRangeLower: ISO range should return lower bound."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021/2021-06-30"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeLower",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-01-01"
-    ), "dateRangeLower: ISO range should return lower bound of leading date."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-01-01/2021-06-12"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-06-12"
-    ), "dateRangeUpper: ISO range should return upper bound."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2021-01-01/2021-06"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2021-06-30"
-    ), "dateRangeUpper: ISO range should return upper bound of trailing date."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2020-01/2021-06-30"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).datum
-        == "2020-01/2021-06"
-    ), "dateRangeString: ISO range should be returned compressed to month range."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "20-01-2020/2021-06-30"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).errors[0]
-        == "Metadata field field_name: Detected date range but could not parse date: 20-01-2020/2021-06-30."
-    ), "Invalid date range format errors."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "2022-01-01/2021-06-30"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2022, 1, 1),
-            },
-        ).errors[0]
-        == "Metadata field field_name:'2022-01-01/2021-06-30' is an invalid date range. Lower bound: 2022-01-01 00:00:00+00:00 is after upper bound: 2021-06-30 00:00:00+00:00."
-    ), "Invalid date range format errors."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021-01-01 TO 2021-12-31]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2022, 6, 15),
-            },
-        ).datum
-        == "2021"
-    ), "Years are compressed in dateRangeString."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021-01-01 TO 2022-12-31]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2024, 6, 15),
-            },
-        ).datum
-        == "2021/2022"
-    ), "Multiple years are compressed in dateRangeString."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2024-02-01 TO 2024-02-29]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeString",
-                "submittedAt": ts_from_ymd(2024, 6, 15),
-            },
-        ).datum
-        == "2024-02"
-    ), "Months are compressed in dateRangeString (also for leap years)."
-    assert (
-        ProcessingFunctions.parse_date_into_range(
-            {"date": "[2021-01-01 TO 2021-12-31]"},
-            "field_name",
-            ["field_name"],
-            {
-                "fieldType": "dateRangeUpper",
-                "submittedAt": ts_from_ymd(2021, 6, 15),
-            },
-        ).datum
-        == "2021-06-15"
-    ), "dateRangeUpper: lucene range upper bound should be tightened by submittedAt."
+@dataclass
+class DateRangeCase:
+    name: str
+    date: str
+    field_type: str
+    submitted_at: str
+    release_date: str | None = None
+    expected_datum: str | None = None
+    expected_error: str | None = None
+
+
+date_range_cases = [
+    DateRangeCase(
+        name="dateRangeString: 2021-12 should be returned as is.",
+        date="2021-12",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2022, 12, 15),
+        expected_datum="2021-12",
+    ),
+    DateRangeCase(
+        name="dateRangeLower: 2021-12 should be returned as 2021-12-01.",
+        date="2021-12",
+        field_type="dateRangeLower",
+        submitted_at=ts_from_ymd(2021, 12, 15),
+        expected_datum="2021-12-01",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: 2021-12 should be returned as 2021-12-31.",
+        date="2021-12",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2022, 12, 15),
+        expected_datum="2021-12-31",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: 2021-12 should be returned as submittedAt time: 2021-12-15.",
+        date="2021-12",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2021, 12, 15),
+        expected_datum="2021-12-15",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: 2021-02 should be returned as 2021-02-28.",
+        date="2021-02",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2021, 3, 15),
+        expected_datum="2021-02-28",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: 2021 should be returned as 2021-12-15.",
+        date="2021",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2021, 12, 15),
+        expected_datum="2021-12-15",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: 2021 should be returned as 2021-12-31.",
+        date="2021",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2022, 1, 15),
+        expected_datum="2021-12-31",
+    ),
+    DateRangeCase(
+        name=(
+            "dateRangeUpper: 2021-12 with releaseDate 2021-12-15 should be returned as 2021-12-15."
+        ),
+        date="2021-12",
+        release_date="2021-12-15",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2021, 12, 16),
+        expected_datum="2021-12-15",
+    ),
+    DateRangeCase(
+        name=(
+            "dateRangeUpper: empty date with releaseDate 2021-12-15 should be returned as "
+            "2021-12-15."
+        ),
+        date="",
+        release_date="2021-12-15",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2021, 12, 16),
+        expected_datum="2021-12-15",
+    ),
+    DateRangeCase(
+        name="dateRangeString: empty date should be returned as None.",
+        date="",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2021, 12, 16),
+    ),
+    DateRangeCase(
+        name="dateRangeString: invalid date should be returned as None.",
+        date="not.date",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2021, 12, 16),
+    ),
+    DateRangeCase(
+        name="dateRangeLower: empty date should be returned as None.",
+        date="",
+        release_date="2021-12-15",
+        field_type="dateRangeLower",
+        submitted_at=ts_from_ymd(2021, 12, 16),
+    ),
+    DateRangeCase(
+        name="dateRangeLower: lucene range should return lower bound.",
+        date="[2021-01-02 TO 2021-06-30]",
+        field_type="dateRangeLower",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-01-02",
+    ),
+    DateRangeCase(
+        name="dateRangeLower: lucene range should return lower bound of leading year.",
+        date="[2021 TO 2021-06-30]",
+        field_type="dateRangeLower",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-01-01",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: lucene range should return upper bound.",
+        date="[2021-01-01 TO 2021-06-30]",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-06-30",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: lucene range should return upper bound of final date.",
+        date="[2021-01-01 TO 2021]",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-12-31",
+    ),
+    DateRangeCase(
+        name="dateRangeString: lucene day range should be compressed to month range.",
+        date="[2021-05-01 TO 2021-06-30]",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-05/2021-06",
+    ),
+    DateRangeCase(
+        name="dateRangeString: lucene year range should be compressed to month range.",
+        date="[2021 TO 2021-06]",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-01/2021-06",
+    ),
+    DateRangeCase(
+        name="dateRangeLower: ISO range should return lower bound.",
+        date="2021-03-05/2021-06-30",
+        field_type="dateRangeLower",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-03-05",
+    ),
+    DateRangeCase(
+        name="dateRangeLower: ISO range should return lower bound of leading date.",
+        date="2021/2021-06-30",
+        field_type="dateRangeLower",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-01-01",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: ISO range should return upper bound.",
+        date="2021-01-01/2021-06-12",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-06-12",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: ISO range should return upper bound of trailing date.",
+        date="2021-01-01/2021-06",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2021-06-30",
+    ),
+    DateRangeCase(
+        name="dateRangeString: ISO range should be returned compressed to month range.",
+        date="2020-01/2021-06-30",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_datum="2020-01/2021-06",
+    ),
+    DateRangeCase(
+        name="Invalid date range format is reported as an error.",
+        date="20-01-2020/2021-06-30",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_error=(
+            "Metadata field field_name: Detected date range but could not parse date: "
+            "20-01-2020/2021-06-30."
+        ),
+    ),
+    DateRangeCase(
+        name="Date range with lower bound after upper bound is reported as an error.",
+        date="2022-01-01/2021-06-30",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2022, 1, 1),
+        expected_error=(
+            "Metadata field field_name:'2022-01-01/2021-06-30' is an invalid date range. "
+            "Lower bound: 2022-01-01 00:00:00+00:00 is after upper bound: "
+            "2021-06-30 00:00:00+00:00."
+        ),
+    ),
+    DateRangeCase(
+        name="Years are compressed in dateRangeString.",
+        date="[2021-01-01 TO 2021-12-31]",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2022, 6, 15),
+        expected_datum="2021",
+    ),
+    DateRangeCase(
+        name="Multiple years are compressed in dateRangeString.",
+        date="[2021-01-01 TO 2022-12-31]",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2024, 6, 15),
+        expected_datum="2021/2022",
+    ),
+    DateRangeCase(
+        name="Months are compressed in dateRangeString (also for leap years).",
+        date="[2024-02-01 TO 2024-02-29]",
+        field_type="dateRangeString",
+        submitted_at=ts_from_ymd(2024, 6, 15),
+        expected_datum="2024-02",
+    ),
+    DateRangeCase(
+        name="dateRangeUpper: lucene range upper bound should be tightened by submittedAt.",
+        date="[2021-01-01 TO 2021-12-31]",
+        field_type="dateRangeUpper",
+        submitted_at=ts_from_ymd(2021, 6, 15),
+        expected_datum="2021-06-15",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", date_range_cases, ids=lambda c: c.name)
+def test_parse_date_into_range(case: DateRangeCase) -> None:
+    input_data: InputMetadata = {"date": case.date}
+    if case.release_date is not None:
+        input_data["releaseDate"] = case.release_date
+
+    result = ProcessingFunctions.parse_date_into_range(
+        input_data,
+        "field_name",
+        ["field_name"],
+        {"fieldType": case.field_type},
+        replace(DEFAULT_TEST_CONTEXT, submitted_at=case.submitted_at),
+        DEFAULT_EXTERNAL_SERVICES,
+    )
+
+    if case.expected_error is not None:
+        assert result.errors[0] == case.expected_error, case.name
+    else:
+        assert result.datum == case.expected_datum, case.name
 
 
 @dataclass
@@ -1543,7 +1528,6 @@ concatenate_cases = [
         input_data={"date": "2021-01-01/2021-12-31", "country": "USA"},
         input_fields=["date", "country"],
         concatenate_args={
-            "ACCESSION_VERSION": "accession.1",
             "order": ["date", "country"],
             "type": ["dateRangeString", "string"],
         },
@@ -1554,7 +1538,6 @@ concatenate_cases = [
         input_data={"someInt": "", "geoLocCountry": "", "sampleCollectionDate": "2025"},
         input_fields=["geoLocCountry", "sampleCollectionDate"],
         concatenate_args={
-            "ACCESSION_VERSION": "accession.1",
             "order": ["someInt", "geoLocCountry", "ACCESSION_VERSION", "sampleCollectionDate"],
             "type": ["integer", "string", "ACCESSION_VERSION", "date"],
         },
@@ -1565,7 +1548,6 @@ concatenate_cases = [
         input_data={"someInt": "0", "geoLocCountry": "", "sampleCollectionDate": "2025"},
         input_fields=["geoLocCountry", "sampleCollectionDate"],
         concatenate_args={
-            "ACCESSION_VERSION": "accession.1",
             "order": ["someInt", "geoLocCountry", "ACCESSION_VERSION", "sampleCollectionDate"],
             "type": ["integer", "string", "ACCESSION_VERSION", "date"],
         },
@@ -1576,7 +1558,6 @@ concatenate_cases = [
         input_data={"someInt": "", "geoLocCountry": "", "sampleCollectionDate": ""},
         input_fields=["geoLocCountry", "sampleCollectionDate"],
         concatenate_args={
-            "ACCESSION_VERSION": "accession.1",
             "order": ["someInt", "geoLocCountry", "ACCESSION_VERSION", "sampleCollectionDate"],
             "type": ["integer", "string", "ACCESSION_VERSION", "date"],
             "fallback_value": "unknown",
@@ -1588,7 +1569,6 @@ concatenate_cases = [
         input_data={"someInt": "0", "geoLocCountry": "", "sampleCollectionDate": "2025"},
         input_fields=["geoLocCountry", "sampleCollectionDate"],
         concatenate_args={
-            "ACCESSION_VERSION": "accession.1",
             "order": ["someInt", "geoLocCountry", "sampleCollectionDate"],
             "type": ["integer", "string", "date"],
             "fallback_value": "unknown",
@@ -1605,6 +1585,8 @@ def test_concatenate(case: ConcatenateCase) -> None:
         output_field="displayName",
         input_fields=case.input_fields,
         args=case.concatenate_args,
+        context=DEFAULT_TEST_CONTEXT,
+        external_services=DEFAULT_EXTERNAL_SERVICES,
     )
     assert result.datum == case.expected
 
@@ -1723,12 +1705,9 @@ input_fields = [
     "nextclade.clade",
     "geoLocCountry",
     "specimenCollectorSampleId",
-    "submissionId",
     "sampleCollectionDate",
 ]
 base_args: FunctionArgs = {
-    "ACCESSION_VERSION": "accession.1",
-    "is_insdc_ingest_group": False,
     "order": ["nextclade.clade", "geoLocCountry", "IDENTIFIER", "sampleCollectionDate"],
     "type": ["string", "string", "IDENTIFIER", "string"],
     # regex pattern constraints:
@@ -1739,7 +1718,7 @@ base_args: FunctionArgs = {
     "regex_pattern": r"^(?:[^/]+/)?[^/]+/(?P<identifier>[^/]+)/\d{4}(?:-\d{2}){0,2}$",
     "human_readable_pattern": "<any>/<any>/<identifier>/<date>",
 }
-insdc_args: FunctionArgs = {**base_args, "is_insdc_ingest_group": True}
+insdc_args: FunctionArgs = base_args
 prefix_args: FunctionArgs = {
     **base_args,
     "order": ["ARG:prefix", "geoLocCountry", "IDENTIFIER", "sampleCollectionDate"],
@@ -1756,27 +1735,34 @@ def test_display_name_construction(case: DisplayNameCase) -> None:
             "nextclade.clade": "DENV-1",
             "geoLocCountry": case.geo_loc_country,
             "sampleCollectionDate": case.sample_collection_date,
-            "submissionId": case.submission_id,
             "specimenCollectorSampleId": case.specimen_collector_id,
         }
+
+    test_context = replace(DEFAULT_TEST_CONTEXT, submission_id=case.submission_id)
 
     res = ProcessingFunctions.build_display_name(
         input_data(),
         "displayName",
         input_fields,
         base_args | case.extra_args,
+        context=test_context,
+        external_services=DEFAULT_EXTERNAL_SERVICES,
     )
     res_insdc = ProcessingFunctions.build_display_name(
         input_data(),
         "displayName",
         input_fields,
         insdc_args | case.extra_args,
+        context=replace(test_context, group_id=test_context.insdc_ingest_group_id),
+        external_services=DEFAULT_EXTERNAL_SERVICES,
     )
     res_prefix = ProcessingFunctions.build_display_name(
         input_data(),
         "displayName",
         input_fields,
         prefix_args | case.extra_args,
+        context=test_context,
+        external_services=DEFAULT_EXTERNAL_SERVICES,
     )
 
     assert res.datum == case.expected_regular
@@ -1795,7 +1781,6 @@ def test_call_function_converts_raw_errors_to_annotations() -> None:
     output_field = "myField"
     args: FunctionArgs = {
         "options": ["OptionA", "OptionB"],
-        "is_insdc_ingest_group": False,
     }
 
     result = ProcessingFunctions.call_function(
@@ -1804,6 +1789,8 @@ def test_call_function_converts_raw_errors_to_annotations() -> None:
         input_data={"input": "NotAnOption"},
         output_field=output_field,
         input_fields=input_fields,
+        context=DEFAULT_TEST_CONTEXT,
+        external_services=DEFAULT_EXTERNAL_SERVICES,
     )
 
     assert result.datum is None
@@ -1818,6 +1805,237 @@ def test_call_function_converts_raw_errors_to_annotations() -> None:
     assert annotation.unprocessedFields == (
         AnnotationSource(name="myField", type=AnnotationSourceType.METADATA),
     )
+
+
+SUBMISSION_PROJECT_XML = b"""<PROJECT_SET>
+  <PROJECT accession="PRJEB12345">
+    <TITLE>A submission project</TITLE>
+    <SUBMISSION_PROJECT><SEQUENCING_PROJECT/></SUBMISSION_PROJECT>
+  </PROJECT>
+</PROJECT_SET>"""
+
+UMBRELLA_PROJECT_XML = b"""<PROJECT_SET>
+  <PROJECT accession="PRJEB106529">
+    <TITLE>An umbrella project</TITLE>
+    <UMBRELLA_PROJECT/>
+    <RELATED_PROJECTS>
+      <RELATED_PROJECT><PARENT_PROJECT accession="PRJEB94357"/></RELATED_PROJECT>
+    </RELATED_PROJECTS>
+  </PROJECT>
+</PROJECT_SET>"""
+
+BIOSAMPLE_XML = b"""<SAMPLE_SET><SAMPLE accession="SAMEA123456"/></SAMPLE_SET>"""
+
+
+@dataclass
+class EnaAccessionCase:
+    name: str
+    accession: str
+    accession_type: str | None = "bioproject"
+    # How ENA responds: an HTTP status code, or an exception raised by the session.
+    # A list gives one status code per request, in order.
+    ena_response: int | list[int] | Exception | None = None
+    ena_xml: bytes = b""
+    is_insdc_ingest_group: bool = False
+    expected_datum: str | None = None
+    expected_error: str | None = None
+    expected_warning: str | None = None
+    # None means ENA must not be contacted at all.
+    expected_url: str | list[str] | None = None
+
+
+ena_accession_cases = [
+    EnaAccessionCase(
+        name="public_bioproject_is_accepted",
+        accession="PRJEB12345",
+        ena_response=200,
+        ena_xml=SUBMISSION_PROJECT_XML,
+        expected_datum="PRJEB12345",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/PRJEB12345",
+    ),
+    EnaAccessionCase(
+        name="umbrella_bioproject_is_rejected",
+        accession="PRJEB106529",
+        ena_response=200,
+        ena_xml=UMBRELLA_PROJECT_XML,
+        expected_error="is an umbrella project",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/PRJEB106529",
+    ),
+    EnaAccessionCase(
+        name="public_biosample_is_accepted",
+        accession="SAMEA123456",
+        accession_type="biosample",
+        ena_response=200,
+        ena_xml=BIOSAMPLE_XML,
+        expected_datum="SAMEA123456",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/SAMEA123456",
+    ),
+    EnaAccessionCase(
+        name="public_sra_run_is_accepted",
+        accession="SRR27477368",
+        accession_type="raw_reads",
+        ena_response=200,
+        expected_datum="SRR27477368",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/SRR27477368",
+    ),
+    EnaAccessionCase(
+        name="sra_experiment_in_raw_reads_field_is_rejected",
+        accession="SRX23184375",
+        accession_type="raw_reads",
+        expected_error="'SRX23184375' is/are malformatted, raw reads accessions",
+    ),
+    EnaAccessionCase(
+        name="insdc_ingested_raw_reads_list_with_sra_sample_is_accepted_unchecked",
+        accession="SRR27477368, srs12345678",
+        accession_type="raw_reads",
+        is_insdc_ingest_group=True,
+        expected_datum="SRR27477368,SRS12345678",
+    ),
+    EnaAccessionCase(
+        name="each_raw_reads_accession_in_list_is_checked",
+        accession="SRR27477368,SRR27477369",
+        accession_type="raw_reads",
+        ena_response=[200, 404],
+        expected_datum="SRR27477368,SRR27477369",
+        expected_warning="Accession 'SRR27477369' is not visible on ENA",
+        expected_url=[
+            "https://www.ebi.ac.uk/ena/browser/api/xml/SRR27477368",
+            "https://www.ebi.ac.uk/ena/browser/api/xml/SRR27477369",
+        ],
+    ),
+    EnaAccessionCase(
+        name="sra_sample_in_raw_reads_field_is_rejected",
+        accession="SRS12345678",
+        accession_type="raw_reads",
+        expected_error="'SRS12345678' is/are malformatted, raw reads accessions",
+    ),
+    EnaAccessionCase(
+        name="biosample_in_bioproject_field_is_rejected",
+        accession="SAMN12345678",
+        expected_error="'SAMN12345678' is/are malformatted, bioproject accessions",
+    ),
+    EnaAccessionCase(
+        name="bioproject_in_biosample_field_is_rejected",
+        accession="PRJEB12345",
+        accession_type="biosample",
+        expected_error="'PRJEB12345' is/are malformatted, biosample accessions",
+    ),
+    EnaAccessionCase(
+        name="comma_separated_bioprojects_are_rejected",
+        accession="PRJNA591860,PRJEB106529",
+        expected_error="'PRJNA591860,PRJEB106529' is/are malformatted, bioproject accessions",
+    ),
+    EnaAccessionCase(
+        name="lowercase_accession_is_uppercased",
+        accession="prjeb12345",
+        ena_response=200,
+        ena_xml=SUBMISSION_PROJECT_XML,
+        expected_datum="PRJEB12345",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/PRJEB12345",
+    ),
+    EnaAccessionCase(
+        name="surrounding_whitespace_is_stripped",
+        accession=" PRJEB12345 ",
+        ena_response=200,
+        ena_xml=SUBMISSION_PROJECT_XML,
+        expected_datum="PRJEB12345",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/PRJEB12345",
+    ),
+    EnaAccessionCase(
+        name="invalid_accession_type_is_internal_error",
+        accession="PRJEB12345",
+        accession_type="nucleotide",
+        expected_error="got args {'accession_type': 'nucleotide'}",
+    ),
+    EnaAccessionCase(
+        name="missing_accession_type_is_internal_error",
+        accession="PRJEB12345",
+        accession_type=None,
+        expected_error="requires accession_type to be one of",
+    ),
+    EnaAccessionCase(
+        name="not_visible_accession_is_warned_about",
+        accession="PRJEB99999",
+        ena_response=404,
+        expected_datum="PRJEB99999",
+        expected_warning="is not visible on ENA",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/PRJEB99999",
+    ),
+    EnaAccessionCase(
+        name="server_error_is_warned_about",
+        accession="PRJEB12345",
+        ena_response=501,
+        expected_datum="PRJEB12345",
+        expected_warning="could not reach ENA",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/PRJEB12345",
+    ),
+    EnaAccessionCase(
+        name="exhausted_retries_are_warned_about",
+        accession="PRJEB12345",
+        ena_response=requests.exceptions.RetryError(),
+        expected_datum="PRJEB12345",
+        expected_warning="could not reach ENA",
+        expected_url="https://www.ebi.ac.uk/ena/browser/api/xml/PRJEB12345",
+    ),
+    EnaAccessionCase(
+        name="missing_accession_is_not_checked",
+        accession="",
+    ),
+    EnaAccessionCase(
+        name="insdc_ingested_accession_format_is_checked",
+        accession="PRJNA123,PRJNA456",
+        is_insdc_ingest_group=True,
+        expected_error="'PRJNA123,PRJNA456' is/are malformatted, bioproject accessions",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", ena_accession_cases, ids=lambda c: c.name)
+def test_check_ena_accession(case: EnaAccessionCase) -> None:
+    external_services.ena_cache.clear()
+    with mock.patch.object(external_services.ena_cache, "session") as mock_session:
+        if isinstance(case.ena_response, Exception):
+            mock_session.get.side_effect = case.ena_response
+        elif isinstance(case.ena_response, list):
+            mock_session.get.side_effect = [
+                mock.MagicMock(status_code=status, content=case.ena_xml)
+                for status in case.ena_response
+            ]
+        else:
+            mock_session.get.return_value = mock.MagicMock(
+                status_code=case.ena_response, content=case.ena_xml
+            )
+
+        ingest_group_id = DEFAULT_TEST_CONTEXT.insdc_ingest_group_id
+        result = ProcessingFunctions.check_ena_accession(
+            input_data={"accession": case.accession},
+            output_field="externalAccession",
+            input_fields=["externalAccession"],
+            args={"accession_type": case.accession_type},
+            context=replace(
+                DEFAULT_TEST_CONTEXT,
+                group_id=ingest_group_id if case.is_insdc_ingest_group else ingest_group_id + 1,
+            ),
+            external_services=DEFAULT_EXTERNAL_SERVICES,
+        )
+
+        assert result.datum == case.expected_datum
+        if case.expected_error is None:
+            assert result.errors == []
+        else:
+            assert len(result.errors) == 1
+            assert case.expected_error in result.errors[0]
+        if case.expected_warning is None:
+            assert result.warnings == []
+        else:
+            assert len(result.warnings) == 1
+            assert case.expected_warning in result.warnings[0]
+
+        if isinstance(case.expected_url, str):
+            expected_urls = [case.expected_url]
+        else:
+            expected_urls = case.expected_url or []
+        assert [call.args[0] for call in mock_session.get.call_args_list] == expected_urls
 
 
 if __name__ == "__main__":
