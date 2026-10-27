@@ -28,8 +28,8 @@ spec:
       {{- include "loculus.configProcessor" (dict "name" "loculus-backend-config" "values" $.Values "Values" $.Values) | nindent 8 }}
       containers:
         - name: backend
-          image: {{ include "loculus.image" (dict "name" "backend" "defaultRepository" "ghcr.io/loculus-project/backend" "values" $.Values) }}
-          imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "backend" "values" $.Values) }}
+          image: "{{ $.Values.images.backend.repository }}:{{ $.Values.images.backend.tag }}"
+          imagePullPolicy: "{{ $.Values.images.backend.pullPolicy }}"
           {{- include "loculus.resources" (list "backend" $.Values) | nindent 10 }}
           {{- include "loculus.containerSecurityContext" (list "backend" $.Values) | nindent 10 }}
           startupProbe:

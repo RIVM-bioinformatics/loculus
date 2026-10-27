@@ -1,7 +1,7 @@
 {{- define "loculus.configProcessor" -}}
 - name: config-processor-{{ .name }}
-  image: {{ include "loculus.image" (dict "name" "configProcessor" "defaultRepository" "ghcr.io/loculus-project/config-processor" "values" .values) }}
-  imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "configProcessor" "values" .values) }}
+  image: "{{ $.Values.images.configProcessor.repository }}:{{ $.Values.images.configProcessor.tag }}"
+  imagePullPolicy: "{{ $.Values.images.configProcessor.pullPolicy }}"
   volumeMounts:
     - name: {{ .name }}
       mountPath: /input

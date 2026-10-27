@@ -2886,6 +2886,7 @@ images:
   loculusSilo:
     repository: "ghcr.io/loculus-project/loculus-silo"
     pullPolicy: Always
+    tag: "latest"
   lapis:
     repository: "ghcr.io/genspectrum/lapis"
     tag: "v0.8.0@sha256:4da71d94aceb36b7ea5963aa2e7b0566567c6423fe7fdd39448e69aebda2a8bb"
@@ -2893,21 +2894,55 @@ images:
   website:
     repository: "ghcr.io/loculus-project/website"
     pullPolicy: Always
+    tag: "commit-719d290"
   backend:
     repository: "ghcr.io/loculus-project/backend"
     pullPolicy: Always
+    tag: "latest"
   deaconIndex:
     repository: "ghcr.io/loculus-project/deacon-index"
     tag: "2026-08-28-13-33@sha256:13cbc6bf729136973ed744616522598b658351a27086b0797218090cd2197637"
     pullPolicy: IfNotPresent
+  taxonomyService:
+    repository: "ghcr.io/loculus-project/taxonomy-service"
+    pullPolicy: Always
+    tag: "latest"
+  configProcessor:
+    repository: "ghcr.io/loculus-project/config-processor"
+    pullPolicy: Always
+    tag: "latest"
   postgres:
     repository: "ghcr.io/loculus-project/mirror/postgres"
     tag: "15.19"
     pullPolicy: IfNotPresent
   keycloak:
-    repository: "ghcr.io/loculus-project/mirror/keycloak"
-    tag: "23.0"
+    repository: "quay.io/keycloak/keycloak"
+    tag: "26.7.2"
     pullPolicy: IfNotPresent
+  keycloakify:
+    repository: "ghcr.io/loculus-project/keycloakify"
+    pullPolicy: Always
+    tag: "latest"
+  autoapprove:
+    repository: "ghcr.io/loculus-project/ingest"
+    pullPolicy: Always
+    tag: "latest"
+  docs:
+    repository: "ghcr.io/loculus-project/docs"
+    pullPolicy: Always
+    tag: "latest"
+  enaSubmission:
+    repository: "ghcr.io/loculus-project/ena-submission"
+    pullPolicy: Always
+    tag: "latest"
+  enaSubmissionFlyway:
+    repository: "ghcr.io/loculus-project/ena-submission-flyway"
+    pullPolicy: Always
+    tag: "latest"
+  rawReadsProcessing:
+    repository: "ghcr.io/loculus-project/raw-reads-processing-service"
+    pullPolicy: Always
+    tag: "latest"
   minio:
     repository: "ghcr.io/loculus-project/mirror/minio"
     tag: "RELEASE.2025-09-07T16-13-09Z"

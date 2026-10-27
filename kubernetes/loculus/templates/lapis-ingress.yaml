@@ -37,8 +37,10 @@ spec:
       name: {{ $gatewayName }}
       namespace: {{ $gatewayNamespace }}
       sectionName: websecure
+  {{- if eq $.Values.environment "server" }}
   hostnames:
-    - {{ if eq $.Values.environment "server" }}{{ $lapisHost }}{{ end }}
+    - {{ $lapisHost }}
+  {{- end }}
   rules:
     {{- range $key := $organismKeys }}
     - matches:
@@ -106,8 +108,10 @@ spec:
       name: {{ $gatewayName }}
       namespace: {{ $gatewayNamespace }}
       sectionName: websecure
+  {{- if eq $.Values.environment "server" }}
   hostnames:
-    - {{ if eq $.Values.environment "server" }}{{ $lapisHost }}{{ end }}
+    - {{ $lapisHost }}
+  {{- end }}
   rules:
     {{- range $key := $organismKeys }}
     - matches:

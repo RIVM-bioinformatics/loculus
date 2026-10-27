@@ -46,8 +46,8 @@ spec:
               mountPath: /data
       containers:
         - name: taxonomy-service
-          image: {{ include "loculus.image" (dict "name" "taxonomyService" "defaultRepository" "ghcr.io/loculus-project/taxonomy-service" "values" $.Values) }}
-          imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "taxonomyService" "values" $.Values) }}
+          image: "{{ $.Values.images.taxonomyService.repository }}:{{ $.Values.images.taxonomyService.tag }}"
+          imagePullPolicy: "{{ $.Values.images.taxonomyService.pullPolicy }}"
           {{- include "loculus.resources" (list "taxonomy-service" $.Values) | nindent 10 }}
           {{- include "loculus.containerSecurityContext" (list "taxonomy-service" $.Values) | nindent 10 }}
           args:
