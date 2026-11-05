@@ -25,11 +25,14 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "loculus.podSecurityContext" (list "ingest" .Values) | nindent 6 }}
       containers:
         - name: autoapprove
-          image: ghcr.io/loculus-project/ingest:{{ $dockerTag }}
-          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          image: "{{ $.Values.images.autoapprove.repository }}:{{ $.Values.images.autoapprove.tag }}"
+          imagePullPolicy: "{{ $.Values.images.autoapprove.pullPolicy }}"
           {{- include "loculus.resources" (list "ingest" .Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "ingest" .Values) | nindent 10 }}
           env:
             - name: KEYCLOAK_INGEST_PASSWORD
               valueFrom:

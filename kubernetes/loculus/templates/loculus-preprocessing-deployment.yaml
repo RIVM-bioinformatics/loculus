@@ -11,6 +11,7 @@
 {{- $flattened := include "loculus.flattenPreprocessingVersions" $item.contents.preprocessing | fromJson }}
 {{- range $processingIndex, $processingConfig := $flattened.items }}
 {{- $thisDockerTag := $processingConfig.dockerTag | default $dockerTag }}
+{{- $imageKey := $processingConfig.imageKey | default "" }}
 {{- $replicas := $processingConfig.replicas | default 1 }}
 ---
 apiVersion: apps/v1
@@ -35,11 +36,19 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "loculus.podSecurityContext" (list "preprocessing" $.Values) | nindent 6 }}
       containers:
         - name: preprocessing-{{ $organism }}
-          image: {{ $processingConfig.image}}:{{ $thisDockerTag }}
+          {{- if $imageKey }}
+          image: {{ include "loculus.image" (dict "name" $imageKey "defaultRepository" $processingConfig.image "defaultTag" $thisDockerTag "values" $.Values) }}
+          imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" $imageKey "values" $.Values) }}
+          {{- else }}
+          image: {{ $processingConfig.image }}:{{ $thisDockerTag }}
           imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          {{- end }}
           {{- include "loculus.resources" (list "preprocessing" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "preprocessing" $.Values) | nindent 10 }}
           env:
             - name: KEYCLOAK_PASSWORD
               valueFrom:
@@ -56,10 +65,18 @@ spec:
             - "--keycloak-password=$(KEYCLOAK_PASSWORD)"
       {{- if $processingConfig.configFile }}
             - "--config=/etc/config/preprocessing-config.yaml"
+      {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      {{- if $processingConfig.configFile }}
             - name: preprocessing-config-volume-{{ $organism }}-v{{ $processingConfig.version }}-{{ $processingIndex }}
               mountPath: /etc/config
+      {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- if $processingConfig.configFile }}
         - name: preprocessing-config-volume-{{ $organism }}-v{{ $processingConfig.version }}-{{ $processingIndex }}
           configMap:
             name: loculus-preprocessing-config-{{ $organism }}-v{{ $processingConfig.version }}-{{ $processingIndex }}

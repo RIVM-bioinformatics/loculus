@@ -23,10 +23,14 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" $ | nindent 6 }}
       {{- include "loculus.podScheduling" $ | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "loculus.podSecurityContext" (list "taxonomy-service" $.Values) | nindent 6 }}
       initContainers:
         - name: download-taxonomy-db
           image: "{{ $.Values.images.alpine.repository }}:{{ $.Values.images.alpine.tag }}"
           imagePullPolicy: "{{ $.Values.images.alpine.pullPolicy }}"
+          {{- include "loculus.resources" (list "download-taxonomy-db" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "download-taxonomy-db" $.Values) | nindent 10 }}
           command: ["sh", "-c"]
           args:
             - |
@@ -42,9 +46,10 @@ spec:
               mountPath: /data
       containers:
         - name: taxonomy-service
-          image: "ghcr.io/loculus-project/taxonomy-service:{{ $dockerTag }}"
-          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          image: "{{ $.Values.images.taxonomyService.repository }}:{{ $.Values.images.taxonomyService.tag }}"
+          imagePullPolicy: "{{ $.Values.images.taxonomyService.pullPolicy }}"
           {{- include "loculus.resources" (list "taxonomy-service" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "taxonomy-service" $.Values) | nindent 10 }}
           args:
             - taxonomy_service
             - "--config-file=/config/config.yaml"

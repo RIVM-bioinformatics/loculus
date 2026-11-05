@@ -774,6 +774,12 @@
                 "type": "string",
                 "description": "Docker image for the preprocessing pipeline."
               },
+              "imageKey": {
+                "groups": ["preprocessing"],
+                "docsIncludePrefix": false,
+                "type": "string",
+                "description": "Optional key in the top-level images map used to override this preprocessing image per deployment."
+              },
               "dockerTag": {
                 "groups": ["preprocessing"],
                 "docsIncludePrefix": false,
@@ -1180,8 +1186,260 @@
           "description": "The pull policy to use. Always: always pull the image. IfNotPresent: pull if not present locally. Never: never pull, use local image only."
         }
       },
-      "required": ["repository", "pullPolicy"],
       "additionalProperties": false
+    },
+    "seLinuxOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "SELinux options. See https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#selinuxoptions-v1-core",
+      "properties": {
+        "user": {
+          "type": "string",
+          "description": "SELinux user label"
+        },
+        "role": {
+          "type": "string",
+          "description": "SELinux role label"
+        },
+        "type": {
+          "type": "string",
+          "description": "SELinux type label"
+        },
+        "level": {
+          "type": "string",
+          "description": "SELinux level label (e.g. 's0:c123,c456')"
+        }
+      }
+    },
+    "seccompProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Seccomp profile. See https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#seccompprofile-v1-core",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["RuntimeDefault", "Unconfined", "Localhost"],
+          "description": "The type of seccomp profile. RuntimeDefault uses the container runtime default, Unconfined disables seccomp, Localhost references a profile on the node."
+        },
+        "localhostProfile": {
+          "type": "string",
+          "description": "Path of the pre-configured profile on the node, relative to the kubelet's seccomp profile location. Only valid when type is Localhost."
+        }
+      },
+      "required": ["type"]
+    },
+    "windowsOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Windows-specific security options. See https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#windowssecuritycontextoptions-v1-core",
+      "properties": {
+        "gmsaCredentialSpecName": {
+          "type": "string",
+          "description": "Name of the GMSA credential spec to use"
+        },
+        "gmsaCredentialSpec": {
+          "type": "string",
+          "description": "Inline GMSA credential spec to use"
+        },
+        "runAsUserName": {
+          "type": "string",
+          "description": "The username to run the container's process as"
+        },
+        "hostProcess": {
+          "type": "boolean",
+          "description": "Whether the container is a Windows HostProcess container"
+        }
+      }
+    },
+    "podSecurityContextValue": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Pod-level security context (spec.template.spec.securityContext). Applies to all containers in the pod. See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+      "properties": {
+        "runAsUser": {
+          "type": "integer",
+          "description": "The UID to run all container processes in the pod as."
+        },
+        "runAsGroup": {
+          "type": "integer",
+          "description": "The primary GID for all container processes in the pod."
+        },
+        "runAsNonRoot": {
+          "type": "boolean",
+          "description": "If true, the kubelet will validate that the container runs as a non-root user before starting it."
+        },
+        "supplementalGroups": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "description": "A list of additional GIDs to apply to all container processes in the pod."
+        },
+        "supplementalGroupsPolicy": {
+          "type": "string",
+          "enum": ["Merge", "Strict"],
+          "description": "Defines how supplementary groups are calculated. Merge (default) merges /etc/group memberships; Strict only uses fsGroup, supplementalGroups and runAsGroup."
+        },
+        "fsGroup": {
+          "type": "integer",
+          "description": "A special supplemental group applied to all containers. Kubernetes changes the ownership of volumes to this GID."
+        },
+        "fsGroupChangePolicy": {
+          "type": "string",
+          "enum": ["Always", "OnRootMismatch"],
+          "description": "Controls how Kubernetes changes ownership and permissions of volumes to match fsGroup. OnRootMismatch only changes if the root directory ownership does not match."
+        },
+        "seLinuxOptions": { "$ref": "#/definitions/seLinuxOptions" },
+        "seLinuxChangePolicy": {
+          "type": "string",
+          "enum": ["MountOption", "Recursive"],
+          "description": "Controls how SELinux labels are applied to volumes. MountOption uses mount options where supported; Recursive relabels all files."
+        },
+        "seccompProfile": { "$ref": "#/definitions/seccompProfile" },
+        "sysctls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of a property to set (e.g. 'kernel.shm_rmid_forced')."
+              },
+              "value": {
+                "type": "string",
+                "description": "Value of the property."
+              }
+            },
+            "required": ["name", "value"]
+          },
+          "description": "A list of sysctls to set on the pod."
+        },
+        "windowsOptions": { "$ref": "#/definitions/windowsOptions" }
+      }
+    },
+    "containerSecurityContextValue": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Container-level security context (containers[].securityContext). Applies only to the individual container and overrides pod-level settings on overlap. See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+      "properties": {
+        "runAsUser": {
+          "type": "integer",
+          "description": "The UID to run the container's process as."
+        },
+        "runAsGroup": {
+          "type": "integer",
+          "description": "The primary GID for the container's process."
+        },
+        "runAsNonRoot": {
+          "type": "boolean",
+          "description": "If true, the kubelet will validate that the container runs as a non-root user before starting it."
+        },
+        "allowPrivilegeEscalation": {
+          "type": "boolean",
+          "description": "Controls whether a process can gain more privileges than its parent process. Always true when the container is privileged or has CAP_SYS_ADMIN."
+        },
+        "privileged": {
+          "type": "boolean",
+          "description": "If true, runs the container in privileged mode (all capabilities, host access). Strongly discouraged in production."
+        },
+        "readOnlyRootFilesystem": {
+          "type": "boolean",
+          "description": "If true, mounts the container's root filesystem as read-only."
+        },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Linux capabilities to add or drop. Capability names omit the CAP_ prefix (e.g. 'NET_ADMIN').",
+          "properties": {
+            "add": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Capabilities to add, e.g. ['NET_ADMIN']."
+            },
+            "drop": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Capabilities to drop, e.g. ['ALL']."
+            }
+          }
+        },
+        "seLinuxOptions": { "$ref": "#/definitions/seLinuxOptions" },
+        "seccompProfile": { "$ref": "#/definitions/seccompProfile" },
+        "procMount": {
+          "type": "string",
+          "enum": ["Default", "Unmasked"],
+          "description": "Controls the container's /proc mount. Unmasked makes masked/read-only paths writable (requires user namespaces)."
+        },
+        "appArmorProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "AppArmor profile for the container. See https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#apparmorprofile-v1-core",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["RuntimeDefault", "Unconfined", "Localhost"],
+              "description": "The type of AppArmor profile. RuntimeDefault is the default, Unconfined disables AppArmor, Localhost references a profile loaded on the node."
+            },
+            "localhostProfile": {
+              "type": "string",
+              "description": "Name of the pre-configured profile on the node. Only valid when type is Localhost."
+            }
+          },
+          "required": ["type"]
+        },
+        "windowsOptions": { "$ref": "#/definitions/windowsOptions" }
+      }
+    },
+    "podSecurityContextSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "$ref": "#/definitions/podSecurityContextValue" },
+        "website": { "$ref": "#/definitions/podSecurityContextValue" },
+        "docs": { "$ref": "#/definitions/podSecurityContextValue" },
+        "taxonomy-service": { "$ref": "#/definitions/podSecurityContextValue" },
+        "ena-submission": { "$ref": "#/definitions/podSecurityContextValue" },
+        "ena-submission-list-cronjob": { "$ref": "#/definitions/podSecurityContextValue" },
+        "ingest": { "$ref": "#/definitions/podSecurityContextValue" },
+        "ingest-trigger": { "$ref": "#/definitions/podSecurityContextValue" },
+        "keycloak": { "$ref": "#/definitions/podSecurityContextValue" },
+        "silo": { "$ref": "#/definitions/podSecurityContextValue" },
+        "lapis": { "$ref": "#/definitions/podSecurityContextValue" },
+        "backend": { "$ref": "#/definitions/podSecurityContextValue" },
+        "preprocessing": { "$ref": "#/definitions/podSecurityContextValue" },
+        "minio": { "$ref": "#/definitions/podSecurityContextValue" },
+        "keycloak-database": { "$ref": "#/definitions/podSecurityContextValue" },
+        "database": { "$ref": "#/definitions/podSecurityContextValue" },
+        "raw-reads-processing": { "$ref": "#/definitions/podSecurityContextValue" }
+      }
+    },
+    "containerSecurityContextSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "website": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "docs": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "taxonomy-service": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "download-taxonomy-db": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "ena-submission": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "ena-submission-flyway": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "ena-submission-list-cronjob": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "ingest": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "ingest-init": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "ingest-trigger": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "keycloak": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "keycloak-theme-prep": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "silo": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "lapis": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "silo-importer": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "backend": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "raw-reads-processing": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "preprocessing": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "minio": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "keycloak-database": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "database": { "$ref": "#/definitions/containerSecurityContextValue" },
+        "config-processor": { "$ref": "#/definitions/containerSecurityContextValue" }
+      }
     }
   },
   "type": "object",
@@ -1302,11 +1560,6 @@
       "type": "string",
       "default": "localhost",
       "description": "Host string used for local development"
-    },
-    "host": {
-      "groups": ["general"],
-      "type": "string",
-      "description": "Hostname where Loculus will be accessible"
     },
     "bannerMessage": {
       "groups": ["general"],
@@ -1499,32 +1752,108 @@
       "required": ["github"],
       "additionalProperties": false
     },
-    "public": {
-      "group": ["website"],
+    "networking": {
+      "groups": ["general"],
       "type": "object",
-      "description": "TODO",
+      "description": "Network configuration, in three layers. (1) host and subdomainSeparator define the naming convention every public URL is derived from. (2) networking.publicHosts overrides the public URL of an individual service; these URLs are what the applications advertise (website links, OAuth redirects, LAPIS URLs handed to clients). (3) The hostname of the website, backend, Keycloak and LAPIS public URLs is also the hostname of that service's Ingress rule; networking.ingressHosts overrides that hostname alone, for the rare case where cluster routing must differ from the public URL. Inheritance only ever runs convention -> publicHosts -> ingressHosts: setting ingressHosts never changes an advertised URL. The convention and the Ingress hostnames apply to environment=server; in a local environment the public URLs default to localHost with per-service ports instead, and the website, backend, Keycloak and MinIO Ingress rules are not rendered at all.",
+      "additionalProperties": false,
       "properties": {
-        "properties": {
-          "backendUrl": {
-            "groups": ["website"],
-            "type": "string",
-            "description": "Overwrite the URL where the Loculus backend is publicly available."
-          },
-          "websiteUrl": {
-            "groups": ["website"],
-            "type": "string",
-            "description": "Overwrite the URL where the website is publicly available."
-          },
-          "keycloakUrl": {
-            "groups": ["website"],
-            "type": "string",
-            "description": "Overwrite the URL where Keycloak is publicly available."
-          },
-          "lapisUrlTemplate": {
-            "groups": ["website"],
-            "type": "string",
-            "description": "Overwrite the URLs where the LAPIS instances are publicly available. Must contain `%organism%` as a placeholder."
+        "host": {
+          "groups": ["general"],
+          "type": "string",
+          "description": "Base domain of the deployment. In the server environment it is the website's hostname and the base from which every other service's default URL is derived as https://<service><subdomainSeparator><host> - e.g. backend-myhost.com, authentication-myhost.com, lapis-myhost.com; it is also used for the docs-preview hostname in any environment. Set this and nothing else for the standard layout. A www. alias for the website is added automatically, unless the website has been moved off this host or this host already starts with www."
+        },
+        "subdomainSeparator": {
+          "groups": ["general"],
+          "type": "string",
+          "default": "-",
+          "description": "Separator between the service prefix and networking.host when deriving default hostnames in the server environment. Common values are '-' (backend-myhost.com) or '.' (backend.myhost.com)."
+        },
+        "publicHosts": {
+          "groups": ["general"],
+          "type": "object",
+          "description": "Per-service overrides for the public URLs the applications advertise. Leave a key unset to use the derived default: https://<host> for the website and https://<service><subdomainSeparator><host> for the others in the server environment, or http://<localHost>:<port> in a local environment. A URL set here also becomes the hostname of that service's Ingress rule (unless networking.ingressHosts overrides it), so overriding a URL alone is enough for a working deployment. In the server environment the URL must not contain a path, because the Ingress routes a whole hostname at / - rendering fails if it does. The only exception is lapisUrlTemplate, whose trailing /%organism% segment the LAPIS Ingress does route.",
+          "additionalProperties": false,
+          "properties": {
+            "backendUrl": {
+              "groups": ["general"],
+              "type": "string",
+              "default": "",
+              "description": "Public URL of the Loculus backend. Defaults to https://backend<subdomainSeparator><host>. Example: https://api.loculus.x.y.com"
+            },
+            "websiteUrl": {
+              "groups": ["general"],
+              "type": "string",
+              "default": "",
+              "description": "Public URL of the website; also the base for the Keycloak redirect URIs. Defaults to https://<host>, so only set it when the website is not simply that - a non-HTTPS deployment, or a website domain unrelated to the other services. Setting it suppresses the automatic www. alias, since a certificate for www.<override> would usually have no DNS record. Example: https://loculus.x.y.com"
+            },
+            "keycloakUrl": {
+              "groups": ["general"],
+              "type": "string",
+              "default": "",
+              "description": "Public URL of Keycloak. Defaults to https://authentication<subdomainSeparator><host>. Example: https://auth.loculus.x.y.com"
+            },
+            "lapisUrlTemplate": {
+              "groups": ["general"],
+              "type": "string",
+              "default": "",
+              "pattern": "^$|%organism%",
+              "description": "Public URL template for the LAPIS instances; must contain `%organism%` as a placeholder, and in the server environment `/%organism%` must be the only path segment. Defaults to https://lapis<subdomainSeparator><host>/%organism%. Example: https://pathogen-api.loculus.x.y.com/%organism%"
+            }
           }
+        },
+        "ingressHosts": {
+          "groups": ["general"],
+          "type": "object",
+          "description": "Per-service overrides for the hostname in a service's Ingress rule. Each key defaults to the hostname of that service's public URL - whether that URL comes from networking.publicHosts or from the host/subdomainSeparator convention - which is almost always what you want; override only when the hostname routed inside the cluster must differ from the public URL, e.g. behind a CDN or an external reverse proxy that terminates the public name. An override here changes routing only: the URLs the applications advertise are unaffected, and setting networking.publicHosts is not a prerequisite. Overrides exist for the four services listed below; the development MinIO and docs-preview Ingress hostnames are always s3/docs<subdomainSeparator><host>.",
+          "additionalProperties": false,
+          "properties": {
+            "website": {
+              "groups": ["general"],
+              "type": "string",
+              "description": "Hostname for the website Ingress rule. Defaults to the hostname of the resolved website URL - networking.publicHosts.websiteUrl if set, otherwise the convention-derived default."
+            },
+            "backend": {
+              "groups": ["general"],
+              "type": "string",
+              "description": "Hostname for the backend Ingress rule. Defaults to the hostname of the resolved backend URL - networking.publicHosts.backendUrl if set, otherwise the convention-derived default."
+            },
+            "keycloak": {
+              "groups": ["general"],
+              "type": "string",
+              "description": "Hostname for the Keycloak Ingress rule. Defaults to the hostname of the resolved Keycloak URL - networking.publicHosts.keycloakUrl if set, otherwise the convention-derived default."
+            },
+            "lapis": {
+              "groups": ["general"],
+              "type": "string",
+              "description": "Hostname for the LAPIS Ingress rule. Defaults to the hostname of the resolved LAPIS URL - networking.publicHosts.lapisUrlTemplate if set, otherwise the convention-derived default."
+            }
+          }
+        },
+        "enforceHTTPS": {
+          "groups": ["general"],
+          "type": "boolean",
+          "default": true,
+          "description": "If true, attaches an HTTP-to-HTTPS redirect middleware to the website, backend, Keycloak and development MinIO Ingress rules, and to the LAPIS trailing-slash redirect Ingress; note that the main LAPIS Ingress does not get it, so plain-HTTP LAPIS requests are served rather than redirected. When false, Keycloak additionally accepts the plaintext http:// variant of the website URL as a redirect URI."
+        },
+        "traefikVersion": {
+          "groups": ["general"],
+          "type": "integer",
+          "enum": [2, 3],
+          "default": 3,
+          "description": "Traefik major version for CRD API group. Use 2 for traefik.containo.us/v1alpha1 (Traefik v2) or 3 for traefik.io/v1alpha1 (Traefik v3)."
+        },
+        "gatewayName": {
+          "groups": ["general"],
+          "type": "string",
+          "default": "traefik",
+          "description": "Name of the shared Traefik Gateway resource that owns the Loculus HTTPRoute entries."
+        },
+        "gatewayNamespace": {
+          "groups": ["general"],
+          "type": "string",
+          "default": "ingress-traefik",
+          "description": "Namespace of the shared Traefik Gateway resource that owns the Loculus HTTPRoute entries."
         }
       }
     },
@@ -1566,7 +1895,7 @@
             "public": {
               "groups": ["website"],
               "type": "object",
-              "description": "Settings for the `public` section of the `runtime_config.json`",
+              "description": "Settings for the `public` section of the `runtime_config.json`. This mirrors networking.publicHosts at runtime and is populated automatically.",
               "properties": {}
             }
           }
@@ -1637,6 +1966,19 @@
           "type": "boolean",
           "default": true,
           "description": "If true, allows users to register new accounts in Keycloak."
+        },
+        "eventsEnabled": {
+          "groups": ["auth"],
+          "type": "boolean",
+          "default": true,
+          "description": "If true, stores Keycloak user events for auditing and troubleshooting."
+        },
+        "eventsExpiration": {
+          "groups": ["auth"],
+          "type": "integer",
+          "minimum": 0,
+          "default": 604800,
+          "description": "Number of seconds Keycloak retains stored user events. Zero means events do not expire."
         },
         "identityProviders": {
           "type": "object",
@@ -1803,18 +2145,6 @@
         }
       }
     },
-    "enforceHTTPS": {
-      "type": "boolean",
-      "default": true,
-      "description": "TODO"
-    },
-    "traefikVersion": {
-      "groups": ["general"],
-      "type": "integer",
-      "enum": [2, 3],
-      "default": 3,
-      "description": "Traefik major version for CRD API group. Use 2 for traefik.containo.us/v1alpha1 (Traefik v2) or 3 for traefik.io/v1alpha1 (Traefik v3)."
-    },
     "ingestLimitSeconds": {
       "type": "integer",
       "default": 1800,
@@ -1958,10 +2288,6 @@
       },
       "additionalProperties": false
     },
-    "subdomainSeparator": {
-      "type": "string",
-      "default": "-"
-    },
     "getSubmissionListLimitSeconds": {
       "type": "integer",
       "default": 600
@@ -2081,8 +2407,16 @@
         "website": { "$ref": "#/definitions/imageSpec" },
         "backend": { "$ref": "#/definitions/imageSpec" },
         "deaconIndex": { "$ref": "#/definitions/imageSpec" },
+        "autoapprove": { "$ref": "#/definitions/imageSpec" },
+        "configProcessor": { "$ref": "#/definitions/imageSpec" },
+        "docs": { "$ref": "#/definitions/imageSpec" },
+        "enaSubmission": { "$ref": "#/definitions/imageSpec" },
+        "enaSubmissionFlyway": { "$ref": "#/definitions/imageSpec" },
+        "taxonomyService": { "$ref": "#/definitions/imageSpec" },
+        "rawReadsProcessing": { "$ref": "#/definitions/imageSpec" },
         "postgres": { "$ref": "#/definitions/imageSpec" },
         "keycloak": { "$ref": "#/definitions/imageSpec" },
+        "keycloakify": { "$ref": "#/definitions/imageSpec" },
         "minio": { "$ref": "#/definitions/imageSpec" },
         "busybox": { "$ref": "#/definitions/imageSpec" },
         "kubectl": { "$ref": "#/definitions/imageSpec" },
@@ -2211,6 +2545,18 @@
         }
       },
       "additionalProperties": false
+    },
+    "podSecurityContext": {
+      "groups": ["general"],
+      "type": "object",
+      "$ref": "#/definitions/podSecurityContextSpec",
+      "description": "Pod-level security context values keyed by workload name. See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/."
+    },
+    "containerSecurityContext": {
+      "groups": ["general"],
+      "type": "object",
+      "$ref": "#/definitions/containerSecurityContextSpec",
+      "description": "Container-level security context values keyed by workload or container name. Init containers with dedicated keys can be configured independently. See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/."
     },
     "secrets": {
       "description": "TODO"

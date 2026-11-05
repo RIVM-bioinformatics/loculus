@@ -1,5 +1,8 @@
-{{- $lapisHost := printf "lapis%s%s" .Values.subdomainSeparator .Values.host }}
-{{- $traefikApiVersion := ternary "traefik.io/v1alpha1" "traefik.containo.us/v1alpha1" (eq (int $.Values.traefikVersion) 3) -}}
+{{- $gatewayName := default "traefik" $.Values.networking.gatewayName -}}
+{{- $gatewayNamespace := default "ingress-traefik" $.Values.networking.gatewayNamespace -}}
+{{- $ingressHosts := $.Values.networking.ingressHosts | default dict }}
+{{- $lapisHost := $ingressHosts.lapis | default (include "loculus.ingressHost" (include "loculus.lapisUrlTemplate" .)) }}
+{{- $traefikApiVersion := ternary "traefik.io/v1alpha1" "traefik.containo.us/v1alpha1" (eq (int $.Values.networking.traefikVersion) 3) -}}
 {{- $enabledOrganismsResult := (include "loculus.enabledOrganisms" . | fromJson) }}
 {{- $enabledOrganismsList := $enabledOrganismsResult.organisms }}
 {{- $organismKeys := list -}}
@@ -23,30 +26,46 @@ spec:
     accessControlAllowHeaders:
       - "*"
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: lapis-ingress
-  annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: "{{ $.Release.Namespace }}-cors-all-origins@kubernetescrd,{{- $first := true }}{{- range $key := $organismKeys }}{{ if $first }}{{ $first = false }}{{ else }},{{ end }}{{ $.Release.Namespace }}-strip-{{ $key }}-prefix@kubernetescrd{{- end }}"
 spec:
-  rules:
-  - host: {{ if eq $.Values.environment "server" }}{{ $lapisHost }}{{ end }}
-    http:
-      paths:
-      {{- range $key := $organismKeys }}
-      - path: /{{ $key }}/
-        pathType: {{ ternary "ImplementationSpecific" "Prefix" (eq $.Values.environment "server") }}
-        backend:
-          service:
-            name: {{ template "loculus.lapisServiceName" $key }}
-            port:
-              number: 8080
-      {{- end }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $gatewayName }}
+      namespace: {{ $gatewayNamespace }}
+      sectionName: websecure
   {{- if eq $.Values.environment "server" }}
-  tls:
-  - hosts:
+  hostnames:
     - {{ $lapisHost }}
+  {{- end }}
+  rules:
+    {{- range $key := $organismKeys }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /{{ $key }}/
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: cors-all-origins
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: strip-{{ $key }}-prefix
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ template "loculus.lapisServiceName" $key }}
+          port: 8080
+          weight: 1
+    {{- end }}
+  {{- if eq $.Values.environment "server" }}
   {{- end }}
 
 {{- range $key := $organismKeys }}
@@ -71,35 +90,46 @@ spec:
     replacement: "$0/"
     permanent: true
 ---
-# This ingress is only used to redirect from $LAPIS_URL/$ORGANISM_NAME to $LAPIS_URL/$ORGANISM_NAME/
-# We need to do this so we can strip the /$ORGANISM_NAME/ prefix in the main lapis ingress (see #3360)
+# This route is only used to redirect from $LAPIS_URL/$ORGANISM_NAME to $LAPIS_URL/$ORGANISM_NAME/
+# We need to do this so we can strip the /$ORGANISM_NAME/ prefix in the main lapis route.
 {{- $redirectMiddlewareList := list -}}
-{{- if $.Values.enforceHTTPS -}}
-  {{- $redirectMiddlewareList = append $redirectMiddlewareList (printf "%s-redirect-middleware@kubernetescrd" $.Release.Namespace) }}
+{{- if $.Values.networking.enforceHTTPS -}}
+  {{- $redirectMiddlewareList = append $redirectMiddlewareList "redirect-middleware" }}
 {{- end }}
-{{- $redirectMiddlewareList = append $redirectMiddlewareList (printf "%s-redirect-slash@kubernetescrd" $.Release.Namespace) }}
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+{{- $redirectMiddlewareList = append $redirectMiddlewareList "redirect-slash" }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: lapis-redirect-ingress
-  annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: "{{ join "," $redirectMiddlewareList }}"
-    # High priority to ensure this rule is evaluated first
-    traefik.ingress.kubernetes.io/router.priority: "500"
 spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $gatewayName }}
+      namespace: {{ $gatewayNamespace }}
+      sectionName: websecure
+  {{- if eq $.Values.environment "server" }}
+  hostnames:
+    - {{ $lapisHost }}
+  {{- end }}
   rules:
-  - host: {{ if eq $.Values.environment "server" }}{{ $lapisHost }}{{ end }}
-    http:
-      paths:
-      {{- range $key := $organismKeys }}
-      - path: /{{ $key }}
-        pathType: Exact
-        backend:
-          # An Ingress path requires a backend. Since the redirect happens before
-          # the request is forwarded, we can point all paths to the first
-          # organism's service as a placeholder.
-          service:
-            name: {{ template "loculus.lapisServiceName" (first $organismKeys) }}
-            port:
-              number: 8080
-      {{- end }}
+    {{- range $key := $organismKeys }}
+    - matches:
+        - path:
+            type: Exact
+            value: /{{ $key }}
+      filters:
+        {{- range $middlewareName := $redirectMiddlewareList }}
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: {{ $middlewareName }}
+        {{- end }}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ template "loculus.lapisServiceName" (first $organismKeys) }}
+          port: 8080
+          weight: 1
+    {{- end }}

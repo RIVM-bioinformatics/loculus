@@ -23,9 +23,12 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" . | nindent 6 }}
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "loculus.podSecurityContext" (list "ena-submission" .Values) | nindent 6 }}
       initContainers:
         - name: ena-submission-flyway
-          image: "ghcr.io/loculus-project/ena-submission-flyway:{{ $dockerTag }}"
+          image: "{{ $.Values.images.enaSubmissionFlyway.repository }}:{{ $.Values.images.enaSubmissionFlyway.tag }}"
+          imagePullPolicy: "{{ $.Values.images.enaSubmissionFlyway.pullPolicy }}"
           resources:
             requests:
               cpu: 100m
@@ -33,6 +36,7 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+          {{- include "loculus.containerSecurityContext" (list "ena-submission-flyway" $.Values) | nindent 10 }}
           command: ['flyway', 'migrate']
           env:
             - name: FLYWAY_URL
@@ -52,9 +56,10 @@ spec:
                   key: password
       containers:
         - name: ena-submission
-          image: "ghcr.io/loculus-project/ena-submission:{{ $dockerTag }}"
-          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          image: "{{ $.Values.images.enaSubmission.repository }}:{{ $.Values.images.enaSubmission.tag }}"
+          imagePullPolicy: "{{ $.Values.images.enaSubmission.pullPolicy }}"
           {{- include "loculus.resources" (list "ena-submission" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "ena-submission" $.Values) | nindent 10 }}
           env:
             - name: EXTERNAL_METADATA_UPDATER_PASSWORD
               valueFrom:
@@ -144,12 +149,15 @@ spec:
         spec:
           {{- include "possiblePriorityClassName" . | nindent 10 }}
           {{- include "loculus.podScheduling" . | nindent 10 }}
+          automountServiceAccountToken: false
+          {{- include "loculus.podSecurityContext" (list "ena-submission-list-cronjob" $.Values) | nindent 10 }}
           restartPolicy: Never
           containers:
             - name: ena-submission
-              image: "ghcr.io/loculus-project/ena-submission:{{ $dockerTag }}"
-              imagePullPolicy: {{ $.Values.imagePullPolicy }}
+              image: "{{ $.Values.images.enaSubmission.repository }}:{{ $.Values.images.enaSubmission.tag }}"
+              imagePullPolicy: "{{ $.Values.images.enaSubmission.pullPolicy }}"
               {{- include "loculus.resources" (list "ena-submission-list-cronjob" $.Values) | nindent 14 }}
+              {{- include "loculus.containerSecurityContext" (list "ena-submission-list-cronjob" $.Values) | nindent 14 }}
               env:
                 - name: EXTERNAL_METADATA_UPDATER_PASSWORD
                   valueFrom:

@@ -1,4 +1,3 @@
-{{- $dockerTag := include "loculus.dockerTag" .Values }}
 {{- if not .Values.disableBackend }}
 ---
 apiVersion: apps/v1
@@ -23,13 +22,16 @@ spec:
     spec:
       {{- include "possiblePriorityClassName" . | nindent 6 }}
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "loculus.podSecurityContext" (list "backend" $.Values) | nindent 6 }}
       initContainers:
-{{- include "loculus.configProcessor" (dict "name" "loculus-backend-config" "dockerTag" $dockerTag "imagePullPolicy" $.Values.imagePullPolicy) | nindent 8 }}
+      {{- include "loculus.configProcessor" (dict "name" "loculus-backend-config" "values" $.Values "Values" $.Values) | nindent 8 }}
       containers:
         - name: backend
-          image: "{{ $.Values.images.backend.repository }}:{{ $.Values.images.backend.tag | default $dockerTag }}"
-          imagePullPolicy: "{{ $.Values.images.backend.pullPolicy | default $.Values.imagePullPolicy }}"
+          image: "{{ $.Values.images.backend.repository }}:{{ $.Values.images.backend.tag }}"
+          imagePullPolicy: "{{ $.Values.images.backend.pullPolicy }}"
           {{- include "loculus.resources" (list "backend" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "backend" $.Values) | nindent 10 }}
           startupProbe:
             httpGet:
               path: "/actuator/health/liveness"
@@ -186,6 +188,10 @@ spec:
           volumeMounts:
             - name: loculus-backend-config-processed
               mountPath: /config
+            - name: tmp
+              mountPath: /tmp
       volumes:
+        - name: tmp
+          emptyDir: {}
 {{ include "loculus.configVolume" (dict "name" "loculus-backend-config") | nindent 8 }}
 {{- end }}

@@ -42,6 +42,8 @@ spec:
         component: minio
     spec:
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "loculus.podSecurityContext" (list "minio" $.Values) | nindent 6 }}
       volumes:
         - name: policy-volume
           configMap:
@@ -51,6 +53,7 @@ spec:
           image: "{{ $.Values.images.minio.repository }}:{{ $.Values.images.minio.tag }}"
           imagePullPolicy: "{{ $.Values.images.minio.pullPolicy }}"
           {{- include "loculus.resources" (list "minio" $.Values) | nindent 10 }}
+          {{- include "loculus.containerSecurityContext" (list "minio" $.Values) | nindent 10 }}
           args: ["server", "/data"]
           ports:
             - containerPort: 9000

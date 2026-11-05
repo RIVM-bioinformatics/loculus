@@ -25,6 +25,8 @@ spec:
         component: keycloak-database
     spec:
       {{- include "loculus.podScheduling" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "loculus.podSecurityContext" (list "keycloak-database" .Values) | nindent 6 }}
       containers:
         - name: loculus-keycloak-database
           image: "{{ $.Values.images.postgres.repository }}:{{ $.Values.images.postgres.tag }}"
@@ -35,6 +37,7 @@ spec:
               cpu: 10m
             limits:
               memory: "100Mi"
+          {{- include "loculus.containerSecurityContext" (list "keycloak-database" .Values) | nindent 10 }}
           ports:
             - containerPort: 5432
           env:
