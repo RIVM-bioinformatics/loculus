@@ -376,7 +376,7 @@ def get_config(config_file: str | None = None, ignore_args: bool = False) -> Con
     if config_file_path:
         with open(config_file_path, encoding="utf-8") as file:
             yaml_config = yaml.safe_load(file)
-            logger.debug(f"Loaded config from {config_file_path}: {yaml_config}")
+            logger.debug(f"Loaded config from {config_file_path}")
         config = Config(**yaml_config)
     else:
         config = Config()
