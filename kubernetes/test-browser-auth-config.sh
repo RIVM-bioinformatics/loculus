@@ -47,7 +47,7 @@ production_keycloak="$({
     helm template loculus "$chart" \
         --show-only templates/keycloak-config-map.yaml \
         --set environment=server \
-        --set host=production.loculus.org
+        --set networking.host=production.loculus.org
 })"
 assert_redirects "$production_keycloak" \
     '["https://production.loculus.org/auth/callback"]' \
@@ -58,7 +58,7 @@ preview_keycloak="$({
         -f "$chart/values_preview_server.yaml" \
         --show-only templates/keycloak-config-map.yaml \
         --set environment=server \
-        --set host=preview.loculus.org
+        --set networking.host=preview.loculus.org
 })"
 assert_redirects "$preview_keycloak" \
     '["https://preview.loculus.org/auth/callback", "http://localhost:3000/auth/callback"]' \
@@ -69,7 +69,7 @@ preview_without_localhost="$({
         -f "$chart/values_preview_server.yaml" \
         --show-only templates/keycloak-config-map.yaml \
         --set environment=server \
-        --set host=preview.loculus.org \
+        --set networking.host=preview.loculus.org \
         --set allowLocalhostAuthRedirects=false
 })"
 assert_redirects "$preview_without_localhost" \
@@ -80,7 +80,7 @@ insecure_keycloak="$({
     helm template loculus "$chart" \
         --show-only templates/keycloak-config-map.yaml \
         --set environment=server \
-        --set host=preview.loculus.org \
+        --set networking.host=preview.loculus.org \
         --set insecureCookies=true
 })"
 assert_redirects "$insecure_keycloak" \
@@ -107,16 +107,17 @@ dev_keycloak="$({
         --set environment=local \
         --set branch=latest
 })"
-# The explicit localhost entries must not duplicate the configured host entries.
+# In environment=local the website is served over plain HTTP (loculus.websiteUrl), and the explicit
+# localhost entries must not duplicate it.
 assert_redirects "$dev_keycloak" \
-    '["https://localhost:3000/auth/callback", "http://localhost:3000/auth/callback"]' \
-    'https://localhost:3000/logout##http://localhost:3000/logout'
+    '["http://localhost:3000/auth/callback"]' \
+    'http://localhost:3000/logout'
 
 production_website="$({
     helm template loculus "$chart" \
         --show-only templates/loculus-website-config.yaml \
         --set environment=server \
-        --set host=preview.loculus.org
+        --set networking.host=preview.loculus.org
 })"
 assert_contains "$production_website" '"oidcTransactionCookieSecret" : "[[oidcTransactionCookieSecret]]"'
 assert_not_contains "$production_website" '"oidcTransactionCookieSecret" : "test-oidc-transaction-cookie-secret"'
@@ -128,7 +129,7 @@ from_live_website="$({
         --set disableWebsite=true \
         --set disableBackend=true \
         --set environment=server \
-        --set host=preview.loculus.org \
+        --set networking.host=preview.loculus.org \
         --set usePublicRuntimeConfigAsServerSide=true
 })"
 assert_contains "$from_live_website" '"oidcTransactionCookieSecret" : "test-oidc-transaction-cookie-secret"'

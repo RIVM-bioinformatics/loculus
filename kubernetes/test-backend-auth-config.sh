@@ -19,12 +19,12 @@ assert_issuer() {
         exit 1
     fi
     local hostname_url frontend_url
-    hostname_url=$(printf '%s\n' "$rendered" | sed -n '/name: KC_HOSTNAME_URL/{n;s/.*value: "\([^"]*\)".*/\1/p;}')
+    hostname_url=$(printf '%s\n' "$rendered" | sed -n '/name: KC_HOSTNAME$/{n;s/.*value: "\([^"]*\)".*/\1/p;}')
     frontend_url=$(printf '%s\n' "$rendered" | sed -n 's/.*"frontendUrl": "\([^"]*\)".*/\1/p')
     # Check rendered Keycloak configuration, not a live token; Keycloak appends the realm path.
     # Remove a trailing slash before joining the base URL and realm path.
     if [[ -z "$hostname_url" || "${hostname_url%/}/realms/loculus" != "$actual" ]]; then
-        echo "Keycloak KC_HOSTNAME_URL '$hostname_url' does not match backend issuer '$actual'" >&2
+        echo "Keycloak KC_HOSTNAME '$hostname_url' does not match backend issuer '$actual'" >&2
         exit 1
     fi
     if [[ -z "$frontend_url" || "${frontend_url%/}/realms/loculus" != "$actual" ]]; then
@@ -38,18 +38,18 @@ assert_issuer() {
 }
 
 assert_issuer 'https://authentication-main.loculus.org/realms/loculus' \
-    --set environment=server --set host=main.loculus.org
+    --set environment=server --set networking.host=main.loculus.org
 assert_issuer 'https://authentication.pathoplexus.org/realms/loculus' \
-    --set environment=server --set host=pathoplexus.org --set subdomainSeparator=.
+    --set environment=server --set networking.host=pathoplexus.org --set networking.subdomainSeparator=.
 assert_issuer 'https://authentication-preview.loculus.org/realms/loculus' \
-    -f "$chart/values_preview_server.yaml" --set environment=server --set host=preview.loculus.org
+    -f "$chart/values_preview_server.yaml" --set environment=server --set networking.host=preview.loculus.org
 assert_issuer 'http://localhost:8083/realms/loculus' \
     -f "$chart/values_e2e_and_dev.yaml" --set environment=local --set branch=latest
 assert_issuer 'http://192.0.2.1:8083/realms/loculus' \
     --set environment=local --set localHost=192.0.2.1 --set branch=latest
 assert_issuer 'https://example-8083.app.github.dev/realms/loculus' \
-    --set environment=local --set public.keycloakUrl=https://example-8083.app.github.dev --set branch=latest
+    --set environment=local --set networking.publicHosts.keycloakUrl=https://example-8083.app.github.dev --set branch=latest
 assert_issuer 'https://identity.example.org/auth/realms/loculus' \
-    --set environment=server --set host=example.org --set public.keycloakUrl=https://identity.example.org/auth/
+    --set environment=local --set networking.publicHosts.keycloakUrl=https://identity.example.org/auth/
 
 echo "Backend issuer configuration checks passed."

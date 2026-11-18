@@ -1,13 +1,13 @@
-{{- $keycloakHost := (printf "authentication%s%s" $.Values.subdomainSeparator $.Values.host) }}
-{{- $browserRedirectUris := list }}
-{{- $postLogoutRedirectUris := list }}
-{{- if $.Values.host }}
-{{- $browserRedirectUris = append $browserRedirectUris (printf "https://%s/auth/callback" $.Values.host) }}
-{{- $postLogoutRedirectUris = append $postLogoutRedirectUris (printf "https://%s/logout" $.Values.host) }}
-{{- if $.Values.insecureCookies }}
-{{- $browserRedirectUris = append $browserRedirectUris (printf "http://%s/auth/callback" $.Values.host) }}
-{{- $postLogoutRedirectUris = append $postLogoutRedirectUris (printf "http://%s/logout" $.Values.host) }}
-{{- end }}
+{{- /* Redirect URIs are derived from the URL users actually open (loculus.websiteUrl). An http:// variant is
+       only accepted where plain HTTP is intended (insecureCookies, or HTTPS not enforced): with HTTPS enforced
+       an http:// redirect URI is a machine-in-the-middle handle on the auth code. */}}
+{{- $websiteUrl := include "loculus.websiteUrl" . | trimSuffix "/" }}
+{{- $websiteHost := $websiteUrl | trimPrefix "https://" | trimPrefix "http://" }}
+{{- $browserRedirectUris := list (printf "%s/auth/callback" $websiteUrl) }}
+{{- $postLogoutRedirectUris := list (printf "%s/logout" $websiteUrl) }}
+{{- if or $.Values.insecureCookies (not $.Values.networking.enforceHTTPS) }}
+{{- $browserRedirectUris = append $browserRedirectUris (printf "http://%s/auth/callback" $websiteHost) | uniq }}
+{{- $postLogoutRedirectUris = append $postLogoutRedirectUris (printf "http://%s/logout" $websiteHost) | uniq }}
 {{- end }}
 {{- if $.Values.allowLocalhostAuthRedirects }}
 {{- $browserRedirectUris = append $browserRedirectUris "http://localhost:3000/auth/callback" | uniq }}
