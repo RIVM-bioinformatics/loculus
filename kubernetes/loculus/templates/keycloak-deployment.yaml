@@ -1,3 +1,4 @@
+{{- if not .Values.disableKeycloak }}
 ---
 {{- $dockerTag := include "loculus.dockerTag" .Values }}
 apiVersion: apps/v1
@@ -177,3 +178,4 @@ spec:
           emptyDir: {}
         - name: keycloak-data
           emptyDir: {}
+{{- end }}

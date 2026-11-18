@@ -1,4 +1,4 @@
-{{- $keycloakTokenUrl := "http://loculus-keycloak-service:8083/realms/loculus/protocol/openid-connect/token" }}
+{{- $keycloakTokenUrl := printf "%s/realms/loculus/protocol/openid-connect/token" (include "loculus.keycloakInternalUrl" .) }}
 
 {{- range $_, $item := (include "loculus.enabledOrganisms" . | fromJson).organisms }}
 {{- $key := $item.key }}

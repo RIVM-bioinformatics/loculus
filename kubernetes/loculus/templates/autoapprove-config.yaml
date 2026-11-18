@@ -1,7 +1,7 @@
 {{- if not .Values.disableIngest }}
 {{- $testconfig := .Values.testconfig | default false }}
 {{- $backendHost := .Values.environment | eq "server" | ternary (include "loculus.backendUrl" .) ($testconfig | ternary (printf "http://%s:8079" $.Values.localHost) "http://loculus-backend-service:8079") }}
-{{- $keycloakHost := $testconfig | ternary (printf "http://%s:8083" $.Values.localHost) "http://loculus-keycloak-service:8083" }}
+{{- $keycloakHost := $testconfig | ternary (printf "http://%s:8083" $.Values.localHost) (include "loculus.keycloakInternalUrl" .) }}
 {{- $organismKeys := list }}
 {{- range $_, $item := (include "loculus.enabledOrganisms" . | fromJson).organisms }}
   {{- if $item.contents.ingest }}
