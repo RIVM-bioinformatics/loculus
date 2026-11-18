@@ -1,3 +1,4 @@
+{{- if not .Values.disableKeycloak }}
 {{- /* Redirect URIs are derived from the URL users actually open (loculus.websiteUrl). An http:// variant is
        only accepted where plain HTTP is intended (insecureCookies, or HTTPS not enforced): with HTTPS enforced
        an http:// redirect URI is a machine-in-the-middle handle on the auth code. */}}
@@ -398,3 +399,4 @@ data:
         {{- end }}
       ]
     }
+{{- end }}

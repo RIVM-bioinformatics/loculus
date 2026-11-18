@@ -52,4 +52,21 @@ assert_issuer 'https://example-8083.app.github.dev/realms/loculus' \
 assert_issuer 'https://identity.example.org/auth/realms/loculus' \
     --set environment=local --set networking.publicHosts.keycloakUrl=https://identity.example.org/auth/
 
+# Keycloak running outside the chart: nothing of Keycloak is rendered and everything points at the external URL
+external=$(helm template loculus "$chart" --set environment=server --set networking.host=main.loculus.org \
+    --set disableKeycloak=true --set keycloakInternalUrl=http://keycloak.example:8083/)
+if printf '%s\n' "$external" | grep -q 'component: keycloak\|loculus-keycloak-service\|loculus-keycloak-ingress'; then
+    echo "disableKeycloak=true still renders Keycloak resources or references its service" >&2
+    exit 1
+fi
+for expected in \
+    '--keycloak.url=http://keycloak.example:8083' \
+    '--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://keycloak.example:8083/realms/loculus/protocol/openid-connect/certs' \
+    '"keycloakUrl": "http://keycloak.example:8083"'; do
+    if [[ "$external" != *"$expected"* ]]; then
+        echo "Expected '$expected' with disableKeycloak=true" >&2
+        exit 1
+    fi
+done
+
 echo "Backend issuer configuration checks passed."

@@ -45,6 +45,8 @@ disablePreprocessing: false
 disableIngest: false
 disableEnaSubmission: true
 disableTaxonomyService: false
+disableKeycloak: false
+keycloakInternalUrl: ""
 disableRawReadsProcessingService: true
 readOnlyMode: false
 backendExtraJvmOpts: []

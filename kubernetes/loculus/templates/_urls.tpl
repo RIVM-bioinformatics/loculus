@@ -51,6 +51,12 @@
   {{- end -}}
 {{- end -}}
 
+{{/* In-cluster URL of Keycloak, used by the backend, website, pipelines and SILO. Set keycloakInternalUrl
+     (together with disableKeycloak) when Keycloak runs outside this chart. */}}
+{{- define "loculus.keycloakInternalUrl" -}}
+{{- $.Values.keycloakInternalUrl | default "http://loculus-keycloak-service:8083" | trimSuffix "/" -}}
+{{- end -}}
+
 {{/* generates internal LAPIS urls from given config object */}}
 {{ define "loculus.generateInternalLapisUrls" }}
   {{ range $_, $item := (include "loculus.enabledOrganisms" . | fromJson).organisms }}

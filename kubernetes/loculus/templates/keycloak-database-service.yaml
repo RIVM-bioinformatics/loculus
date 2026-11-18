@@ -1,4 +1,4 @@
-{{- if .Values.runDevelopmentKeycloakDatabase }}
+{{- if and .Values.runDevelopmentKeycloakDatabase (not .Values.disableKeycloak) }}
 apiVersion: v1
 kind: Service
 metadata:

@@ -2083,6 +2083,18 @@
       "default": false,
       "description": "If true, disables the taxonomy service deployment."
     },
+    "disableKeycloak": {
+      "groups": ["services"],
+      "type": "boolean",
+      "default": false,
+      "description": "If true, does not deploy Keycloak (Deployment, Service, route and development database). Keycloak then has to run outside this chart; set keycloakInternalUrl to its in-cluster URL."
+    },
+    "keycloakInternalUrl": {
+      "groups": ["services"],
+      "type": "string",
+      "default": "",
+      "description": "In-cluster URL of Keycloak, used by the backend, website, pipelines and SILO. Empty means the Keycloak service of this chart (http://loculus-keycloak-service:8083)."
+    },
     "disableRawReadsProcessingService": {
       "groups": ["services"],
       "type": "boolean",

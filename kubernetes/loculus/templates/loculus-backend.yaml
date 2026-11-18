@@ -67,12 +67,12 @@ spec:
             - "--keycloak.password=$(BACKEND_KEYCLOAK_PASSWORD)"
             - "--keycloak.realm=loculus"
             - "--keycloak.client=backend-client"
-            - "--keycloak.url=http://loculus-keycloak-service:8083"
+            - {{ printf "--keycloak.url=%s" (include "loculus.keycloakInternalUrl" .) | quote }}
             - "--keycloak.user=backend"
             - "--spring.datasource.password=$(DB_PASSWORD)"
             - "--spring.datasource.url=$(DB_URL)"
             - "--spring.datasource.username=$(DB_USERNAME)"
-            - "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://loculus-keycloak-service:8083/realms/loculus/protocol/openid-connect/certs"
+            - {{ printf "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=%s/realms/loculus/protocol/openid-connect/certs" (include "loculus.keycloakInternalUrl" .) | quote }}
             - {{ printf "--spring.security.oauth2.resourceserver.jwt.issuer-uri=%s/realms/loculus" (include "loculus.keycloakUrl" . | trimSuffix "/") | quote }}
             - "--loculus.cleanup.task.reset-stale-in-processing-after-seconds={{- .Values.preprocessingTimeout | default 120 }}"
             - "--loculus.pipeline-version-upgrade-check.interval-seconds={{- .Values.pipelineVersionUpgradeCheckIntervalSeconds | default 10 }}"
