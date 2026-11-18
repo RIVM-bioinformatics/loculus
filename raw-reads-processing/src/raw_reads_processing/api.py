@@ -1,10 +1,11 @@
 import logging
-import subprocess  # noqa: S404
+import subprocess
 
-from raw_reads_processing.errors import InvalidSubmission, ProcessingFailure
 import uvicorn
 from fastapi import FastAPI, HTTPException
+
 from raw_reads_processing.datatypes import RequestWithFiles, ValidationResult
+from raw_reads_processing.errors import InvalidSubmission, ProcessingFailure
 from raw_reads_processing.process_files import validate_raw_reads_submission
 
 from .config import Config
@@ -41,6 +42,15 @@ def process_files(
         return ValidationResult(errors=[e.error])
     except ProcessingFailure as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+    except Exception as e:
+        # A bug on our side: report it as internal rather than blaming the submission.
+        logger.exception("Unexpected error validating %s", payload.accessionVersion)
+        # Name the exception type so this annotation, which is permanent, can be
+        # correlated with the logged stacktrace.
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error validating files ({type(e).__name__})",
+        ) from e
     return ValidationResult()
 
 

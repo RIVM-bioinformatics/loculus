@@ -4,14 +4,14 @@ import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.Query
 import org.jetbrains.exposed.v1.jdbc.select
-import org.loculus.backend.api.AccessionVersion
-import org.loculus.backend.api.AccessionVersionInterface
-import org.loculus.backend.api.Organism
-import org.loculus.backend.api.Status
 import org.loculus.backend.auth.AuthenticatedUser
-import org.loculus.backend.controller.ForbiddenException
-import org.loculus.backend.controller.UnprocessableEntityException
+import org.loculus.backend.errors.ForbiddenException
+import org.loculus.backend.errors.UnprocessableEntityException
 import org.loculus.backend.service.groupmanagement.GroupManagementPreconditionValidator
+import org.loculus.backend.types.AccessionVersion
+import org.loculus.backend.types.AccessionVersionInterface
+import org.loculus.backend.types.Organism
+import org.loculus.backend.types.Status
 import org.loculus.backend.utils.Accession
 import org.loculus.backend.utils.AccessionComparator
 import org.loculus.backend.utils.AccessionVersionComparator
@@ -67,6 +67,7 @@ class AccessionPreconditionValidator(
                 SequenceEntriesView.statusColumn,
                 SequenceEntriesView.organismColumn,
                 SequenceEntriesView.errorsColumn,
+                SequenceEntriesView.isRevocationColumn,
             )
             .where { SequenceEntriesView.accessionVersionIsIn(accessionVersions) },
         groupManagementPreconditionValidator = groupManagementPreconditionValidator,
@@ -103,6 +104,7 @@ class AccessionPreconditionValidator(
                 SequenceEntriesView.statusColumn,
                 SequenceEntriesView.organismColumn,
                 SequenceEntriesView.errorsColumn,
+                SequenceEntriesView.isRevocationColumn,
             )
             .where {
                 (SequenceEntriesView.accessionColumn inList accessions) and SequenceEntriesView.isMaxVersion
@@ -164,6 +166,21 @@ class AccessionPreconditionValidator(
                 throw UnprocessableEntityException(
                     "Accession versions have errors: " +
                         sequenceEntriesWithErrors.map {
+                            "${it[SequenceEntriesView.accessionColumn]}.${it[SequenceEntriesView.versionColumn]}"
+                        }.joinToString(", "),
+                )
+            }
+            return this
+        }
+
+        fun andThatLatestVersionsAreNotRevocations(): CommonPreconditions {
+            val revocationEntries = sequenceEntries
+                .filter { it[SequenceEntriesView.isRevocationColumn] }
+
+            if (revocationEntries.isNotEmpty()) {
+                throw UnprocessableEntityException(
+                    "Accession versions are revocations and cannot be revoked again: " +
+                        revocationEntries.map {
                             "${it[SequenceEntriesView.accessionColumn]}.${it[SequenceEntriesView.versionColumn]}"
                         }.joinToString(", "),
                 )

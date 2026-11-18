@@ -45,46 +45,12 @@ import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.jetbrains.exposed.v1.json.extract
-import org.loculus.backend.api.AccessionVersion
-import org.loculus.backend.api.AccessionVersionInterface
-import org.loculus.backend.api.AccessionVersionSubmittedMetadata
-import org.loculus.backend.api.ApproveDataScope
-import org.loculus.backend.api.DataUseTerms
-import org.loculus.backend.api.DataUseTermsType
-import org.loculus.backend.api.DeleteSequenceScope
-import org.loculus.backend.api.EditedSequenceEntryData
-import org.loculus.backend.api.ExternalSubmittedData
-import org.loculus.backend.api.FileCategory
-import org.loculus.backend.api.FileIdAndMaybeReleasedAt
-import org.loculus.backend.api.FileIdAndNameAndReadUrl
-import org.loculus.backend.api.GeneticSequence
-import org.loculus.backend.api.GetSequenceResponse
-import org.loculus.backend.api.Organism
-import org.loculus.backend.api.PreprocessingAnnotation
-import org.loculus.backend.api.PreprocessingStatus.IN_PROCESSING
-import org.loculus.backend.api.PreprocessingStatus.PROCESSED
-import org.loculus.backend.api.ProcessedData
-import org.loculus.backend.api.ProcessingResult
-import org.loculus.backend.api.ProcessingResult.HAS_ERRORS
-import org.loculus.backend.api.ProcessingResult.HAS_WARNINGS
-import org.loculus.backend.api.ProcessingResult.NO_ISSUES
-import org.loculus.backend.api.SequenceEntryStatus
-import org.loculus.backend.api.SequenceEntryVersionToEdit
-import org.loculus.backend.api.Status
-import org.loculus.backend.api.Status.APPROVED_FOR_RELEASE
-import org.loculus.backend.api.SubmissionIdMapping
-import org.loculus.backend.api.SubmittedContentWithFileUrls
-import org.loculus.backend.api.SubmittedData
-import org.loculus.backend.api.SubmittedDataDownloadEntry
-import org.loculus.backend.api.SubmittedProcessedData
-import org.loculus.backend.api.UnprocessedData
-import org.loculus.backend.api.fileIds
-import org.loculus.backend.api.getFileId
 import org.loculus.backend.auth.AuthenticatedUser
+import org.loculus.backend.config.BackendConfig
 import org.loculus.backend.config.BackendSpringProperty
-import org.loculus.backend.controller.BadRequestException
-import org.loculus.backend.controller.ProcessingValidationException
-import org.loculus.backend.controller.UnprocessableEntityException
+import org.loculus.backend.errors.BadRequestException
+import org.loculus.backend.errors.ProcessingValidationException
+import org.loculus.backend.errors.UnprocessableEntityException
 import org.loculus.backend.log.AuditLogger
 import org.loculus.backend.metrics.STORE_PREPROCESSED_DATA_PHASE
 import org.loculus.backend.metrics.SUBMIT_PROCESSED_DATA_ENDPOINT
@@ -102,6 +68,41 @@ import org.loculus.backend.service.submission.SequenceEntriesTable.groupIdColumn
 import org.loculus.backend.service.submission.SequenceEntriesTable.versionColumn
 import org.loculus.backend.service.submission.dbtables.CurrentProcessingPipelineTable
 import org.loculus.backend.service.submission.dbtables.ExternalMetadataTable
+import org.loculus.backend.types.AccessionVersion
+import org.loculus.backend.types.AccessionVersionInterface
+import org.loculus.backend.types.AccessionVersionSubmittedMetadata
+import org.loculus.backend.types.ApproveDataScope
+import org.loculus.backend.types.DataUseTerms
+import org.loculus.backend.types.DataUseTermsType
+import org.loculus.backend.types.DeleteSequenceScope
+import org.loculus.backend.types.EditedSequenceEntryData
+import org.loculus.backend.types.ExternalSubmittedData
+import org.loculus.backend.types.FileCategory
+import org.loculus.backend.types.FileIdAndMaybeReleasedAt
+import org.loculus.backend.types.FileIdAndNameAndReadUrl
+import org.loculus.backend.types.GeneticSequence
+import org.loculus.backend.types.GetSequenceResponse
+import org.loculus.backend.types.Organism
+import org.loculus.backend.types.PreprocessingAnnotation
+import org.loculus.backend.types.PreprocessingStatus.IN_PROCESSING
+import org.loculus.backend.types.PreprocessingStatus.PROCESSED
+import org.loculus.backend.types.ProcessedData
+import org.loculus.backend.types.ProcessingResult
+import org.loculus.backend.types.ProcessingResult.HAS_ERRORS
+import org.loculus.backend.types.ProcessingResult.HAS_WARNINGS
+import org.loculus.backend.types.ProcessingResult.NO_ISSUES
+import org.loculus.backend.types.SequenceEntryStatus
+import org.loculus.backend.types.SequenceEntryVersionToEdit
+import org.loculus.backend.types.Status
+import org.loculus.backend.types.Status.APPROVED_FOR_RELEASE
+import org.loculus.backend.types.SubmissionIdMapping
+import org.loculus.backend.types.SubmittedContentWithFileUrls
+import org.loculus.backend.types.SubmittedData
+import org.loculus.backend.types.SubmittedDataDownloadEntry
+import org.loculus.backend.types.SubmittedProcessedData
+import org.loculus.backend.types.UnprocessedData
+import org.loculus.backend.types.fileIds
+import org.loculus.backend.types.getFileId
 import org.loculus.backend.utils.Accession
 import org.loculus.backend.utils.DateProvider
 import org.loculus.backend.utils.Version
@@ -123,6 +124,7 @@ class SubmissionDatabaseService(
     private val processedSequenceEntryValidatorFactory: ProcessedSequenceEntryValidatorFactory,
     private val externalMetadataValidatorFactory: ExternalMetadataValidatorFactory,
     private val accessionPreconditionValidator: AccessionPreconditionValidator,
+    private val backendConfig: BackendConfig,
     private val fileMappingPreconditionValidator: FileMappingPreconditionValidator,
     private val groupManagementPreconditionValidator: GroupManagementPreconditionValidator,
     private val groupManagementDatabaseService: GroupManagementDatabaseService,
@@ -132,6 +134,7 @@ class SubmissionDatabaseService(
     private val emptyProcessedDataProvider: EmptyProcessedDataProvider,
     private val compressionService: CompressionService,
     private val processedDataPostprocessor: ProcessedDataPostprocessor,
+    private val reviewDataService: ReviewDataService,
     private val auditLogger: AuditLogger,
     private val dateProvider: DateProvider,
     private val submissionMetrics: SubmissionMetrics,
@@ -388,6 +391,7 @@ class SubmissionDatabaseService(
                 fileMappingPreconditionValidator
                     .validateFilenameCharacters(fileMapping)
                     .validateFilenamesAreUnique(fileMapping)
+                    // no file-ID uniqueness check: would break reprocessing of older entries
                     .validateCategoriesMatchOutputSchema(fileMapping, organism)
 
                 val accessionVersion =
@@ -956,7 +960,11 @@ class SubmissionDatabaseService(
         processingResultFilter: List<ProcessingResult>? = null,
         page: Int? = null,
         size: Int? = null,
+        includeReviewData: Boolean = false,
     ): GetSequenceResponse {
+        if (includeReviewData && (page == null || page < 0 || size == null || size !in 1..100)) {
+            throw BadRequestException("includeReviewData requires page >= 0 and size between 1 and 100")
+        }
         log.info {
             "getting sequences for user ${authenticatedUser.username} " +
                 "(organism: $organism, groupFilter: $groupIdsFilter, statusFilter: $statusesFilter, " +
@@ -1002,7 +1010,7 @@ class SubmissionDatabaseService(
             .orderBy(SequenceEntriesView.accessionColumn)
             .apply {
                 if (page != null && size != null) {
-                    limit(size).offset((page * size).toLong())
+                    limit(size).offset(page.toLong() * size)
                 }
             }
             .map { row ->
@@ -1030,7 +1038,7 @@ class SubmissionDatabaseService(
         val statusCounts = getStatusCounts(organism, groupCondition)
 
         return GetSequenceResponse(
-            sequenceEntries = entries,
+            sequenceEntries = if (includeReviewData) reviewDataService.enrich(entries, organism) else entries,
             statusCounts = statusCounts,
             processingResultCounts = processingResultCounts,
         )
@@ -1107,6 +1115,7 @@ class SubmissionDatabaseService(
             thatAccessionsExist(accessions)
                 .andThatUserIsAllowedToEditSequenceEntries(authenticatedUser)
                 .andThatSequenceEntriesAreInStates(listOf(Status.APPROVED_FOR_RELEASE))
+                .andThatLatestVersionsAreNotRevocations()
                 .andThatOrganismIs(organism)
         }
 
@@ -1271,10 +1280,27 @@ class SubmissionDatabaseService(
                 .andThatOrganismIs(organism)
         }
 
+        val hasConsensusSequence = editedSequenceEntryData.data.unalignedNucleotideSequences.values
+            .any { !it.isNullOrBlank() }
+        if (backendConfig.consensusSequencesEnabled(organism)) {
+            if (!hasConsensusSequence) {
+                throw UnprocessableEntityException(
+                    "Edited data for accession version " +
+                        "${editedSequenceEntryData.displayAccessionVersion()} of organism ${organism.name} " +
+                        "must contain at least one consensus sequence.",
+                )
+            }
+        } else if (hasConsensusSequence) {
+            throw UnprocessableEntityException(
+                "Sequence uploads are not allowed for organism ${organism.name}.",
+            )
+        }
+
         editedSequenceEntryData.data.files?.let { fileMapping ->
             fileMappingPreconditionValidator
                 .validateFilenameCharacters(fileMapping)
                 .validateFilenamesAreUnique(fileMapping)
+                .validateFileIdsAreUnique(fileMapping)
                 .validateCategoriesMatchSubmissionSchema(fileMapping, organism)
                 .validateMultipartUploads(fileMapping.fileIds)
                 .validateFilesExist(fileMapping.fileIds)
@@ -1286,13 +1312,17 @@ class SubmissionDatabaseService(
             )
         }
 
+        val compressedEditedSequenceEntryData = compressionService.compressSequencesInSubmittedData(
+            editedSequenceEntryData.data,
+            organism,
+        )
         SequenceEntriesTable.update(
             where = {
                 SequenceEntriesTable.accessionVersionIsIn(listOf(editedSequenceEntryData))
             },
         ) {
-            it[submittedDataColumn] = compressionService
-                .compressSequencesInSubmittedData(editedSequenceEntryData.data, organism)
+            it[submittedDataColumn] = compressedEditedSequenceEntryData
+            it[archiveOfSubmittedDataColumn] = compressedEditedSequenceEntryData
         }
 
         SequenceEntriesPreprocessedDataTable.deleteWhere {

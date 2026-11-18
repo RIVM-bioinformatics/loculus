@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import requests
+
 from raw_reads_processing.config import Config
 from raw_reads_processing.datatypes import (
     Annotation,
@@ -10,13 +11,14 @@ from raw_reads_processing.datatypes import (
     FileName,
     RequestWithFiles,
 )
+from raw_reads_processing.deacon import validate_with_deacon
 from raw_reads_processing.errors import ProcessingFailure
 from raw_reads_processing.file_format_validation import (
+    validate_compression,
     validate_file_extensions,
     validate_file_numbers,
     validate_with_readtools,
 )
-from raw_reads_processing.deacon import validate_with_deacon
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,7 @@ def validate_raw_reads_submission(
             download_file(config, file, downloaded_file_path)
             local_files[file.name] = downloaded_file_path
 
+        validate_compression(local_files, file_format)
         validate_with_readtools(
             local_files, file_format, config.read_validation_timeout_seconds
         )

@@ -2,7 +2,9 @@ package org.loculus.backend.config
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.apache.commons.lang3.StringUtils.lowerCase
-import org.loculus.backend.api.Organism
+import org.loculus.backend.types.Organism
+
+const val PROJECT_NAME = "Loculus"
 
 data class BackendConfig(
     val websiteUrl: String,
@@ -18,13 +20,20 @@ data class BackendConfig(
     fun getInstanceConfig(organism: Organism) = organisms[organism.name] ?: throw IllegalArgumentException(
         "Organism: ${organism.name} not found in backend config. Available organisms: ${organisms.keys}",
     )
+
+    fun consensusSequencesEnabled(organism: Organism): Boolean =
+        getInstanceConfig(organism).schema.submissionDataTypes.consensusSequences
 }
 
 data class DataUseTerms(val enabled: Boolean, val urls: DataUseTermsUrls?)
 
 data class DataUseTermsUrls(val open: String, val restricted: String)
 
-data class FileSharing(val outputFileUrlType: FileUrlType = FileUrlType.WEBSITE)
+data class FileSharing(
+    val outputFileUrlType: FileUrlType = FileUrlType.WEBSITE,
+    val disableStrictFilenameValidation: Boolean = false,
+    val maxFileSizeBytes: Long? = null,
+)
 
 /**
  * The types URLs that can be output for a file.

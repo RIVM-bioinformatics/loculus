@@ -1,14 +1,32 @@
 import logging
 import os
 from dataclasses import field
+from enum import StrEnum
 
 import dotenv
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from ena_deposition.ena_types import MoleculeType, Topology
 
 logger = logging.getLogger(__name__)
+
+
+class EnaResultField(StrEnum):
+    """Keys used to store ENA accessions in the `result` column of the
+    ena_deposition_schema project/sample/assembly tables.
+
+    The corresponding Loculus schema field names are configurable per deployment - see
+    LoculusAccessionFieldNames and Config.loculus_accession_fields below.
+    """
+
+    BIOSAMPLE = "biosample_accession"
+    BIOPROJECT = "bioproject_accession"
+    GCA = "gca_accession"
+    RUN = "run_accession"
+    EXPERIMENT = "erx_accession"
+    INSDC_ACCESSION_PREFIX = "insdc_accession"
+    INSDC_ACCESSION_FULL_PREFIX = "insdc_accession_full"
 
 
 class MetadataMapping(BaseModel):
@@ -29,6 +47,17 @@ class ManifestFieldDetails(BaseModel):
     loculus_fields: list[str] = field(default_factory=list)
     function: str | None = None
     default: str | None = None
+
+
+class LoculusAccessionFieldNames(BaseModel):
+    """Names of the Loculus schema fields used to exchange accessions with ENA/NCBI."""
+
+    bioproject: str
+    biosample: str
+    gca: str
+    insdc_accession_prefix: str
+    insdc_accession_full_prefix: str
+    run: str
 
 
 class ExternalMetadataField(BaseModel):
@@ -68,11 +97,11 @@ class Config(BaseModel):
     keycloak_token_url: str
     keycloak_client_id: str
     username: str
-    password: str
+    password: SecretStr
 
     # Details for connecting to the ENA submission state database
     db_username: str
-    db_password: str
+    db_password: SecretStr
     db_url: str
     db_name: str
 
@@ -83,7 +112,7 @@ class Config(BaseModel):
     # ENA specific configuration is set in secure_ena_connection()
     test: bool
     ena_submission_url: str
-    ena_submission_password: str
+    ena_submission_password: SecretStr
     ena_submission_username: str
     ena_reports_service_url: str
     submit_to_ena_prod: bool = False
@@ -97,15 +126,20 @@ class Config(BaseModel):
     suppressed_list_test_url: str | None
 
     # Slack configuration must be provided via environment variables or config
-    slack_hook: str | None
-    slack_token: str | None
+    slack_hook: SecretStr | None
+    slack_token: SecretStr | None
     slack_channel_id: str | None
 
     enaOrganisms: dict[EnaOrganismName, EnaOrganismDetails]  # noqa: N815
     unique_project_suffix: str
+    unique_raw_reads_suffix: str
+    # Name of the Loculus metadata field that holds the JSON-encoded list of raw read files
+    raw_reads_metadata_field: str
     metadata_mapping: dict[str, MetadataMapping]
     metadata_fallback_fields: dict[str, str]
     assembly_manifest_fields_mapping: dict[str, ManifestFieldDetails]
+    raw_reads_manifest_fields_mapping: dict[str, ManifestFieldDetails]
+    loculus_accession_fields: LoculusAccessionFieldNames
     ingest_pipeline_submission_group: int
     ena_checklist: str | None = None
     set_alias_suffix: str | None = None  # Add to test revisions in dev
@@ -115,7 +149,9 @@ class Config(BaseModel):
     ena_http_timeout_seconds: int = 60
     ena_public_search_timeout_seconds: int = 120
     ncbi_public_search_timeout_seconds: int = 120
+    ena_webin_cli_timeout_seconds: int = 300
     ena_http_get_retry_attempts: int = 3
+    ncbi_http_get_retry_attempts: int = 3
     # By default, don't retry HTTP post requests to ENA
     ena_http_post_retry_attempts: int = 1
     min_between_github_requests: int = 2
@@ -130,6 +166,9 @@ class Config(BaseModel):
     slack_retry_threshold_min: int = 720
     submitting_time_threshold_min: int = 15
     waiting_threshold_hours: int = 48
+
+    s3_request_timeout_seconds: int = 600
+    get_released_data_timeout_seconds: int = 600
 
 
 def secure_ena_connection(config: Config):

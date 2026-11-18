@@ -11,7 +11,6 @@ import {
     deleteAllDataScope,
     deleteProcessedDataWithErrorsScope,
     errorsProcessingResult,
-    type GetSequencesResponse,
     type Group,
     inProcessingStatus,
     noIssuesProcessingResult,
@@ -21,7 +20,7 @@ import {
     type SequenceEntryStatus,
     warningsProcessingResult,
 } from '../../types/backend.ts';
-import type { FileCategory } from '../../types/config.ts';
+import type { FileCategory, Metadata } from '../../types/config.ts';
 import { type ReferenceGenomesInfo } from '../../types/referencesGenomes.ts';
 import { type ClientConfig } from '../../types/runtimeConfig.ts';
 import { getAccessionVersionString } from '../../utils/extractAccessionVersion.ts';
@@ -38,14 +37,12 @@ import LucideFilter from '~icons/lucide/filter';
 const menuItemClassName = `group flex rounded-md items-center w-full px-2 py-2 text-sm
 hover:bg-primary-500 bg-primary-600 text-white text-left mb-1`;
 
-let oldSequenceData: GetSequencesResponse | null = null;
-
 type ReviewPageProps = {
     clientConfig: ClientConfig;
     organism: string;
     group: Group;
     accessToken: string;
-    metadataDisplayNames: Map<string, string>;
+    metadataSchema: Metadata[];
     outputFileCategories?: FileCategory[];
     referenceGenomesInfo: ReferenceGenomesInfo;
 };
@@ -84,7 +81,7 @@ const InnerReviewPage: FC<ReviewPageProps> = ({
     organism,
     group,
     accessToken,
-    metadataDisplayNames,
+    metadataSchema,
     outputFileCategories,
     referenceGenomesInfo,
 }) => {
@@ -129,26 +126,13 @@ const InnerReviewPage: FC<ReviewPageProps> = ({
         setPageQuery({ pageOneIndexed: 1, size: newSize });
     };
 
-    let sequencesData = hooks.getSequences.data;
-
-    if (!hooks.getSequences.isLoading && !hooks.getSequences.isError) {
-        oldSequenceData = hooks.getSequences.data;
-    }
-
-    if (hooks.getSequences.isLoading) {
-        if (oldSequenceData) {
-            sequencesData = oldSequenceData;
-        } else {
-            return <div>Loading...</div>;
-        }
-    }
+    const sequencesData = hooks.getSequences.data;
 
     if (hooks.getSequences.isError) {
         return <div>Error: {hooks.getSequences.error.message}</div>;
     }
     if (sequencesData === undefined) {
         return <div>Loading..</div>;
-        // this is not expected to happen, but it's here to satisfy the type checker
     }
 
     const receivedCount = sequencesData.statusCounts[receivedStatus];
@@ -169,8 +153,9 @@ const InnerReviewPage: FC<ReviewPageProps> = ({
         (showErrors ? errorCount : 0);
 
     // If we narrowed the selection and the selected page doesn't exist anymore, go to the last existing page instead
-    if ((pageQuery.pageOneIndexed - 1) * pageQuery.size > selectedCount) {
-        setPageQuery({ ...pageQuery, pageOneIndexed: Math.ceil(selectedCount / pageQuery.size) });
+    const lastPage = Math.max(1, Math.ceil(selectedCount / pageQuery.size));
+    if (!hooks.getSequences.isPreviousData && pageQuery.pageOneIndexed > lastPage) {
+        setPageQuery({ ...pageQuery, pageOneIndexed: lastPage });
     }
 
     if (total === 0) {
@@ -347,10 +332,10 @@ const InnerReviewPage: FC<ReviewPageProps> = ({
         <div className='flex flex-col gap-2 py-4 divide-y divide-gray-200'>
             {sequences.map((sequence) => {
                 return (
-                    <div key={sequence.accession}>
+                    <div key={getAccessionVersionString(sequence)} data-testid={`review-card-${sequence.submissionId}`}>
                         <ReviewCard
                             sequenceEntryStatus={sequence}
-                            metadataDisplayNames={metadataDisplayNames}
+                            metadataSchema={metadataSchema}
                             approveAccessionVersion={() =>
                                 displayConfirmationDialog({
                                     dialogText: `Are you sure you want to approve ${getAccessionVersionString(sequence)}?`,
@@ -394,7 +379,7 @@ const InnerReviewPage: FC<ReviewPageProps> = ({
     );
 
     return (
-        <div className={hooks.getSequences.isLoading ? 'opacity-50 pointer-events-none' : ''}>
+        <div className={hooks.getSequences.isPreviousData ? 'opacity-50 pointer-events-none' : ''}>
             <div className='sticky top-0 z-10'>
                 <div className='flex sm:justify-between items-bottom flex-col md:flex-row gap-5 bg-white pb-1'>
                     {controlPanel}

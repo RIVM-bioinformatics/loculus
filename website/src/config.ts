@@ -5,12 +5,14 @@ import type { z, ZodError } from 'zod';
 
 import { ACCESSION_FIELD, FASTA_IDS_FIELD, FILES_HEADER_PREFIX, SUBMISSION_ID_INPUT_FIELD } from './settings.ts';
 import {
+    type FileSharingConfig,
     type InputField,
     type InstanceConfig,
     type MetadataType,
     type Schema,
     type SequenceFlaggingConfig,
     type WebsiteConfig,
+    fileSharingConfig,
     instanceConfig,
     websiteConfig,
 } from './types/config.ts';
@@ -137,15 +139,6 @@ export function safeGetWebsiteConfig(): WebsiteConfig | null {
     } catch (_) {
         return null;
     }
-}
-
-export function getMetadataDisplayNames(organism: string): Map<string, string> {
-    return new Map(
-        getWebsiteConfig().organisms[organism].schema.metadata.map(({ name, displayName }) => [
-            name,
-            displayName ?? name,
-        ]),
-    );
 }
 
 export type Organism = {
@@ -321,7 +314,7 @@ export function getGroupedInputFields(
 
     nonIdInputFields.forEach((field) => {
         const metadataEntry = schema.metadata.find((meta) => meta.name === field.name);
-        const header = metadataEntry?.header ?? 'Uncategorized';
+        const header = field.header ?? metadataEntry?.header ?? 'Uncategorized';
 
         if (!groups.has(header)) {
             groups.set(header, []);
@@ -363,6 +356,10 @@ export function seqSetsAreEnabled() {
 
 export function dataUseTermsAreEnabled() {
     return getWebsiteConfig().enableDataUseTerms;
+}
+
+export function getFileSharingConfig(): FileSharingConfig {
+    return getWebsiteConfig().fileSharing ?? fileSharingConfig.parse({});
 }
 
 export function getDataUseTermsAgreementHTML() {

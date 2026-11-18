@@ -29,8 +29,8 @@ spec:
       {{- include "loculus.podSecurityContext" (list "ingest" .Values) | nindent 6 }}
       containers:
         - name: autoapprove
-          image: {{ include "loculus.image" (dict "name" "autoapprove" "defaultRepository" "ghcr.io/loculus-project/ingest" "values" $.Values) }}
-          imagePullPolicy: {{ include "loculus.imagePullPolicy" (dict "name" "autoapprove" "values" $.Values) }}
+          image: "{{ $.Values.images.autoapprove.repository }}:{{ $.Values.images.autoapprove.tag }}"
+          imagePullPolicy: "{{ $.Values.images.autoapprove.pullPolicy }}"
           {{- include "loculus.resources" (list "ingest" .Values) | nindent 10 }}
           {{- include "loculus.containerSecurityContext" (list "ingest" .Values) | nindent 10 }}
           env:

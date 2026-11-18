@@ -1,6 +1,7 @@
-import { type FC, useState, useRef, useEffect } from 'react';
+import { type FC, useState, useRef, useEffect, useMemo } from 'react';
 
 import { FilesDialog } from './FilesDialog.tsx';
+import { RevisionDiff } from './RevisionDiff.tsx';
 import { SequencesDialog } from './SequencesDialog.tsx';
 import { backendClientHooks } from '../../services/serviceHooks.ts';
 import {
@@ -12,11 +13,11 @@ import {
     restrictedDataUseTermsOption,
     type SequenceEntryStatus,
     type SequenceEntryStatusNames,
-    type SequenceEntryToEdit,
+    type SequenceReviewData,
     errorsProcessingResult,
     warningsProcessingResult,
 } from '../../types/backend.ts';
-import type { FileCategory } from '../../types/config.ts';
+import type { FileCategory, Metadata } from '../../types/config.ts';
 import type { ReferenceGenomesInfo } from '../../types/referencesGenomes.ts';
 import type { ClientConfig } from '../../types/runtimeConfig.ts';
 import { CustomTooltip } from '../../utils/CustomTooltip.tsx';
@@ -34,12 +35,13 @@ import Unlocked from '~icons/fluent-emoji-high-contrast/unlocked';
 import FormkitSubmit from '~icons/formkit/submit';
 import EmptyCircle from '~icons/grommet-icons/empty-circle';
 import Files from '~icons/lucide/files';
+import GitCompare from '~icons/lucide/git-compare-arrows';
 import RiDna from '~icons/mdi/dna';
 import TickOutline from '~icons/mdi/tick-outline';
 
 type ReviewCardProps = {
     sequenceEntryStatus: SequenceEntryStatus;
-    metadataDisplayNames: Map<string, string>;
+    metadataSchema: Metadata[];
     deleteAccessionVersion: () => void;
     approveAccessionVersion: () => void;
     editAccessionVersion: () => void;
@@ -52,7 +54,7 @@ type ReviewCardProps = {
 
 export const ReviewCard: FC<ReviewCardProps> = ({
     sequenceEntryStatus,
-    metadataDisplayNames,
+    metadataSchema,
     approveAccessionVersion,
     deleteAccessionVersion,
     editAccessionVersion,
@@ -64,16 +66,36 @@ export const ReviewCard: FC<ReviewCardProps> = ({
 }) => {
     const [isSequencesDialogOpen, setSequencesDialogOpen] = useState(false);
     const [isFilesDialogOpen, setFilesDialogOpen] = useState(false);
-    const { isLoading, data } = useGetMetadataAndAnnotations(organism, clientConfig, accessToken, sequenceEntryStatus);
+    const isRevision = sequenceEntryStatus.version > 1 && !sequenceEntryStatus.isRevocation;
+    const [isDiffOpen, setDiffOpen] = useState(false);
+    const metadataDisplayNames = useMemo(
+        () => new Map(metadataSchema.map(({ name, displayName }) => [name, displayName ?? name])),
+        [metadataSchema],
+    );
+    const data = sequenceEntryStatus.reviewData;
+    const sequencePreview = backendClientHooks(clientConfig).useGetDataToEdit(
+        {
+            headers: createAuthorizationHeader(accessToken),
+            params: { organism, accession: sequenceEntryStatus.accession, version: sequenceEntryStatus.version },
+        },
+        {
+            enabled: isSequencesDialogOpen && data !== undefined && sequenceEntryStatus.status === processedStatus,
+            retry: false,
+        },
+    );
     const filesEnabled = outputFileCategories !== undefined && outputFileCategories.length > 0;
-    const hasFiles = Object.entries(data?.processedData.files ?? {}).length > 0;
+    const hasFiles = Object.entries(data?.files ?? {}).length > 0;
 
     const notProcessed = sequenceEntryStatus.status !== processedStatus;
 
+    useEffect(() => {
+        if (notProcessed) setSequencesDialogOpen(false);
+    }, [notProcessed]);
+
     return (
         <div className='px-3 py-2 relative transition-all duration-500'>
-            <div className='flex'>
-                <div className='flex grow flex-wrap '>
+            <div className='flex flex-col sm:flex-row'>
+                <div className='flex grow flex-wrap'>
                     <StatusIcon
                         status={sequenceEntryStatus.status}
                         dataUseTerms={sequenceEntryStatus.dataUseTerms}
@@ -87,7 +109,11 @@ export const ReviewCard: FC<ReviewCardProps> = ({
                         value={sequenceEntryStatus.submissionId}
                     />
                     {data !== undefined && (
-                        <MetadataList data={data} metadataDisplayNames={metadataDisplayNames} isLoading={isLoading} />
+                        <MetadataList
+                            data={data}
+                            accessionVersion={getAccessionVersionString(sequenceEntryStatus)}
+                            metadataDisplayNames={metadataDisplayNames}
+                        />
                     )}
                     {sequenceEntryStatus.isRevocation && (
                         <KeyValueComponent
@@ -108,6 +134,7 @@ export const ReviewCard: FC<ReviewCardProps> = ({
                     viewFiles={data && !notProcessed ? () => setFilesDialogOpen(true) : undefined}
                     filesEnabled={filesEnabled}
                     hasFiles={hasFiles}
+                    viewMetadataChanges={isRevision ? () => setDiffOpen((open) => !open) : undefined}
                 />
             </div>
 
@@ -121,18 +148,30 @@ export const ReviewCard: FC<ReviewCardProps> = ({
             {data?.warnings?.length !== undefined && data.warnings.length > 0 && (
                 <Warnings warnings={data.warnings} accession={sequenceEntryStatus.accession} />
             )}
+            {isDiffOpen && data !== undefined && (
+                <RevisionDiff
+                    current={data}
+                    version={sequenceEntryStatus.version}
+                    metadataSchema={metadataSchema}
+                    referenceGenomesInfo={referenceGenomesInfo}
+                />
+            )}
 
             <SequencesDialog
                 isOpen={isSequencesDialogOpen}
                 onClose={() => setSequencesDialogOpen(false)}
-                dataToView={data}
+                dataToView={sequencePreview.data}
+                isLoading={sequencePreview.isFetching}
+                isError={sequencePreview.isError}
+                onRetry={() => void sequencePreview.refetch()}
                 referenceGenomesInfo={referenceGenomesInfo}
             />
             {filesEnabled && (
                 <FilesDialog
                     isOpen={isFilesDialogOpen}
                     onClose={() => setFilesDialogOpen(false)}
-                    dataToView={data}
+                    accessionVersion={getAccessionVersionString(sequenceEntryStatus)}
+                    files={data?.files ?? null}
                     fileCategories={outputFileCategories}
                 />
             )}
@@ -149,6 +188,7 @@ type ButtonBarProps = {
     viewFiles?: () => void;
     filesEnabled: boolean;
     hasFiles: boolean;
+    viewMetadataChanges?: () => void;
 };
 
 const ButtonBar: FC<ButtonBarProps> = ({
@@ -160,6 +200,7 @@ const ButtonBar: FC<ButtonBarProps> = ({
     viewFiles,
     filesEnabled,
     hasFiles,
+    viewMetadataChanges,
 }) => {
     const buttonBarClass = (disabled: boolean) =>
         `${disabled ? 'text-gray-300' : 'text-gray-500 hover:text-gray-900 hover:cursor-pointer'} inline-block text-xl`;
@@ -171,6 +212,24 @@ const ButtonBar: FC<ButtonBarProps> = ({
     return (
         <div className='flex mb-auto pt-3.5 items-center'>
             <div className='flex gap-x-4'>
+                {viewMetadataChanges && (
+                    <>
+                        <Button
+                            className={buttonBarClass(notProcessed)}
+                            onClick={viewMetadataChanges}
+                            disabled={notProcessed}
+                            aria-label={`View metadata changes for ${getAccessionVersionString(sequenceEntryStatus)}`}
+                            data-tooltip-id={`metadata-diff-tooltip-${sequenceEntryStatus.accession}`}
+                            data-testid={`view-metadata-changes-${sequenceEntryStatus.accession}`}
+                        >
+                            <GitCompare />
+                        </Button>
+                        <CustomTooltip
+                            id={`metadata-diff-tooltip-${sequenceEntryStatus.accession}`}
+                            content={notProcessed ? 'Still awaiting preprocessing' : 'View metadata changes'}
+                        />
+                    </>
+                )}
                 {filesEnabled && viewFiles && (
                     <>
                         <Button
@@ -261,20 +320,19 @@ const ButtonBar: FC<ButtonBarProps> = ({
 };
 
 type MetadataListProps = {
-    data: SequenceEntryToEdit;
+    data: SequenceReviewData;
+    accessionVersion: string;
     metadataDisplayNames: Map<string, string>;
-    isLoading: boolean;
 };
 
 const isAnnotationPresent = (metadataField: string) => (item: ProcessingAnnotation) =>
     item.processedFields[0].name === metadataField;
 
-const MetadataList: FC<MetadataListProps> = ({ data, isLoading, metadataDisplayNames }) =>
-    !isLoading &&
-    Object.entries(data.processedData.metadata).map(([metadataName, value], index) =>
+const MetadataList: FC<MetadataListProps> = ({ data, accessionVersion, metadataDisplayNames }) =>
+    Object.entries(data.metadata).map(([metadataName, value], index) =>
         value === null ? null : (
             <KeyValueComponent
-                accessionVersion={getAccessionVersionString(data)}
+                accessionVersion={accessionVersion}
                 key={index}
                 keyName={metadataDisplayNames.get(metadataName) ?? metadataName}
                 value={displayMetadataField(value)}
@@ -304,8 +362,11 @@ const Errors: FC<ErrorsProps> = ({ errors, accession, metadataDisplayNames }) =>
                         <div key={uniqueKey} className='flex shrink-0'>
                             <p
                                 className='text-red-600'
+                                role='alert'
+                                data-testid='processing-error'
                                 data-tooltip-id={'error-tooltip-' + accession + '-' + uniqueKey}
                             >
+                                <span className='sr-only'>Error: </span>
                                 {processedFieldName}: {error.message}
                             </p>
                             <CustomTooltip
@@ -335,7 +396,10 @@ const Warnings: FC<WarningsProps> = ({ warnings, accession }) => {
                         <p
                             key={warning.processedFields.map((field) => field.type + field.name).join('.') + accession}
                             className='text-yellow-500'
+                            role='status'
+                            data-testid='processing-warning'
                         >
+                            <span className='sr-only'>Warning: </span>
                             {processedFieldName}: {warning.message}
                         </p>
                     );
@@ -523,22 +587,4 @@ function getTextColorAndMessages(
         primaryMessages: undefined,
         secondaryMessages: undefined,
     };
-}
-
-function useGetMetadataAndAnnotations(
-    organism: string,
-    clientConfig: ClientConfig,
-    accessToken: string,
-    sequenceEntryStatus: SequenceEntryStatus,
-) {
-    const { status, accession, version, isRevocation } = sequenceEntryStatus;
-    return backendClientHooks(clientConfig).useGetDataToEdit(
-        {
-            headers: createAuthorizationHeader(accessToken),
-            params: { organism, accession, version },
-        },
-        {
-            enabled: status !== receivedStatus && status !== inProcessingStatus && !isRevocation,
-        },
-    );
 }
